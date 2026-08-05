@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 import secrets
@@ -38,8 +39,8 @@ def sweep_overdue_invoices():
         sb.table("invoices").update({"status": "overdue"}).eq("status", "sent").lt(
             "due_on", date.today().isoformat()
         ).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f"overdue sweep failed: {e}")
 
 
 def is_schema_error(exc: Exception) -> bool:

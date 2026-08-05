@@ -1,5 +1,22 @@
 # PRD — Flyboy Videography Client Portal
 
+## Implemented (June 2026) — session 5
+- Approve Cut Button: POST /api/deliverables/{id}/approve (owner-scoped, only from
+  in_review/revisions_requested, 409 otherwise, admin may approve on behalf);
+  approve-cut-btn on deliverable detail. Verified 9/9 + UI.
+- Client Profile Editing: /profile page (nav-profile) — full_name/company/phone
+  self-update via anon+JWT under RLS (migration 004 added clients.phone, user ran it).
+  Role escalation re-verified blocked.
+- Overdue Invoice Flag (status-only, NO emails per user): sweep_overdue_invoices()
+  flips sent→overdue when due_on < today; runs on /api/clients/ensure (each login)
+  and /api/admin/overview. Future-due and paid untouched. Demo invoice
+  INV-B-OVERDUE-8922 shows OVERDUE.
+- Demo deliverables now: Q3 Teaser=approved, June Social Edit #3=approved,
+  May Recap=final_delivered (approve tests flipped them).
+- Review-noted future optimizations (not built): approver audit column, nightly
+  sweep cron + (status,due_on) index at scale.
+
+
 ## Original problem statement
 Connect the project to the user's existing Supabase database (NO MongoDB). Use the
 publishable/anon key client-side, secret/service_role key server-side only. RLS on
