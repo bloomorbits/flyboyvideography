@@ -1,0 +1,28 @@
+{
+  "summary": "Post-schema, seeded-state E2E testing for Flyboy Videography portal. Backend: 10/10 pytest passed including the new GDPR erase flow (400 on admin erase, successful anonymization of Client B, preservation of bookings/deliverables/invoices, login-disabled for erased user, 409 on repeat erase, Client A control unaffected, /api/me role=client, /api/admin/clients 403 for client-token / 200 for admin). Frontend Playwright: demo client dashboard shows non-zero stat cards (2/2/1/1) with no schema banner, Bookings page lists 2 seeded then 3 after 'Request a shoot' insert, Retainers page shows 'Growth Retainer' with £ formatting, Deliverables shows 3 cards, detail page loads with iframe video embed and comment insert at 01:30 renders the timecode chip, Invoices shows both source-badge-booking and source-badge-subscription with £ amounts, admin login exposes nav-admin and admin-client-select. Everything spec'd is working.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "admin_erase_client in server.py: the anonymize UPDATE on clients + review_threads is not wrapped in a transaction. If the sb.auth.admin.update_user_by_id call fails, the DB rows are already anonymized while the auth account is still live — the raised 500 is honest but leaves partial state. Consider updating auth BEFORE the DB row (or using a Postgres function/RPC) so the flow is atomic.",
+    "admin_erase_client detects prior erasure via client['email'].startswith('erased-'). This is brittle — any future re-anonymization scheme that uses a different prefix will silently break idempotency. Prefer a dedicated boolean column (e.g. erased_at timestamp) or check the email suffix @anonymized.invalid as well.",
+    "review_threads author_name is set to 'Erased Client' only for rows where author_role='client'. Any legacy rows written before author_role was populated (nullable) would be missed. Consider dropping the author_role filter or coalescing.",
+    "Password rotation uses secrets.token_urlsafe(24) but the account is also banned for 100 years — belt-and-braces is fine, but note the new password is never surfaced anywhere, which is correct."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% (all critical flows)"},
+  "test_credentials": "Admin flyboy.admin.demo@gmail.com / AdminStudio#2026, Demo client demo.client.frameform@gmail.com / DemoClient#2026, Client A client.a@seed.flyboytest.com / SeedTest#2026! (intact), Client B client.b@seed.flyboytest.com / SeedTest#2026! — NOW ERASED as part of GDPR verification (login disabled, email anonymized to erased-*@anonymized.invalid).",
+  "seed_data_creation": "During Playwright client flow a TEST_ booking titled 'TEST_Playwright shoot request' was inserted for the demo client (booking count 2 -> 3). One TEST_ review_thread comment at 01:30 was inserted on the first deliverable. These are non-destructive and easy to clean if desired.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Client B (client.b@seed.flyboytest.com) has already been permanently erased in this iteration — do NOT expect it in admin-client-select by that email; look for its erased-<uuid8>@anonymized.invalid alias instead. Client A remains intact as the control. Demo client has 1 TEST_ booking and 1 TEST_ comment left over from Playwright; safe to leave. Backend RLS adversarial test at /app/tests/rls_adversarial_test.py has already passed 16/16 in a previous run.",
+  "rca of the issue": "N/A — no issues reproduced."
+}

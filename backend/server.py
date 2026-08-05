@@ -1,5 +1,6 @@
 import os
 import random
+import secrets
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
@@ -159,7 +160,7 @@ def seed_demo(user=Depends(get_auth_user)):
         {"deliverable_id": delivs[0]["id"], "client_id": cid, "author_user_id": user.id,
          "author_name": client.get("full_name") or client["email"], "author_role": client["role"],
          "version": 2, "timestamp_seconds": 14.5,
-         "comment": "Logo lands a beat too early — push it back ~10 frames."},
+         "comment": "Logo lands a beat too early — push it back ~10 frames.", "resolved": False},
         {"deliverable_id": delivs[0]["id"], "client_id": cid, "author_user_id": user.id,
          "author_name": client.get("full_name") or client["email"], "author_role": client["role"],
          "version": 2, "timestamp_seconds": 42.0,
@@ -291,3 +292,38 @@ def admin_patch_booking(booking_id: str, body: PatchBody, admin=Depends(require_
     if not r.data:
         raise HTTPException(404, "Booking not found")
     return r.data[0]
+
+
+@app.post("/api/admin/clients/{client_id}/erase")
+def admin_erase_client(client_id: str, admin=Depends(require_admin)):
+    """GDPR erasure: anonymize personal data, preserve financial/business records."""
+    r = sb.table("clients").select("*").eq("id", client_id).execute()
+    if not r.data:
+        raise HTTPException(404, "Client not found")
+    client = r.data[0]
+    if client["role"] == "admin":
+        raise HTTPException(400, "Cannot erase an admin account")
+    if client["email"].startswith("erased-"):
+        raise HTTPException(409, "Client already erased")
+
+    anon_email = f"erased-{client_id[:8]}@anonymized.invalid"
+    sb.table("clients").update({
+        "full_name": "Erased Client", "email": anon_email, "company": None,
+    }).eq("id", client_id).execute()
+    sb.table("review_threads").update({"author_name": "Erased Client"}).eq("client_id", client_id).eq("author_role", "client").execute()
+    try:
+        sb.auth.admin.update_user_by_id(client["user_id"], {
+            "email": anon_email,
+            "password": secrets.token_urlsafe(24),
+            "ban_duration": "876000h",
+            "user_metadata": {"full_name": "Erased Client", "company": None},
+        })
+    except Exception as e:
+        raise HTTPException(500, f"Client row anonymized but auth account update failed: {e}")
+    return {
+        "erased": True,
+        "client_id": client_id,
+        "anonymized_email": anon_email,
+        "preserved": "bookings, deliverables, invoices and review thread contents retained (financial/business records)",
+        "auth_account": "email anonymized, password rotated, login banned",
+    }

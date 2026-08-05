@@ -76,18 +76,43 @@ export default function Admin() {
     }
   };
 
+  const eraseClient = async () => {
+    const c = clients.find((x) => x.id === selected);
+    if (!window.confirm(`GDPR-erase ${c?.full_name || c?.email}? Personal data (name, email, contact) is anonymized and their login disabled. Bookings, deliverables and invoices are preserved as financial records. This cannot be undone.`)) return;
+    try {
+      const { data } = await api.post(`/admin/clients/${selected}/erase`);
+      toast.success(`Erased. Records preserved: ${data.preserved}`);
+      const res = await api.get("/admin/clients");
+      setClients(res.data);
+    } catch (err) {
+      toast.error(typeof err.response?.data?.detail === "string" ? err.response.data.detail : "Erase failed");
+    }
+  };
+
   return (
     <div data-testid="admin-page">
       <PageHeader kicker="Studio internal" title="Admin console" />
 
       <Card className="mb-8 p-6">
         <Label>Managing client</Label>
-        <select data-testid="admin-client-select" className={selectCls} value={selected} onChange={(e) => setSelected(e.target.value)}>
-          <option value="">Select a client…</option>
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>{c.full_name || c.email} {c.role === "admin" ? "(admin)" : ""}</option>
-          ))}
-        </select>
+        <div className="flex items-center gap-4">
+          <select data-testid="admin-client-select" className={selectCls} value={selected} onChange={(e) => setSelected(e.target.value)}>
+            <option value="">Select a client…</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>{c.full_name || c.email} {c.role === "admin" ? "(admin)" : ""}</option>
+            ))}
+          </select>
+          {selected && clients.find((x) => x.id === selected)?.role !== "admin" && (
+            <Btn data-testid="admin-erase-client-btn" variant="danger" onClick={eraseClient} className="shrink-0">
+              GDPR erase
+            </Btn>
+          )}
+        </div>
+        {selected && clients.find((x) => x.id === selected)?.email?.startsWith("erased-") && (
+          <p className="mt-3 font-mono text-xs text-warn" data-testid="erased-client-note">
+            This client has been GDPR-erased: personal data anonymized, login disabled, financial records retained.
+          </p>
+        )}
       </Card>
 
       {selected && (
