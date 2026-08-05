@@ -14,7 +14,8 @@ Supabase project: https://pnqqmzszasvfnvnnonvd.supabase.co (auth + Postgres; NO 
 
 ## Seed test clients (RLS adversarial test)
 - Client A: client.a@seed.flyboytest.com / SeedTest#2026! (intact)
-- Client B: client.b@seed.flyboytest.com — GDPR-ERASED, login permanently disabled
+- Clients B, C, D (@seed.flyboytest.com) — GDPR-ERASED, logins permanently disabled
+- All seed rows carry is_seed_data=true (migration 002 applied)
 
 ## Important state
 - Schema SQL HAS been run by the user; tables + RLS live. Demo data seeded for demo client.

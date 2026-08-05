@@ -29,6 +29,19 @@ clients, bookings, retainer_subscriptions, deliverables, review_threads, invoice
 - review_threads UPDATE policy: author_user_id = auth.uid() (clients can only
   update their own comments — fixed after user review, 2026-06).
 
+## Implemented (June 2026) — session 3
+- Migration 002 (user ran it, verified): is_seed_data boolean on all 6 tables,
+  retroactive tagging of ALL test data (4 clients incl. erased Client B; 0 untagged
+  rows anywhere), erasure_audit_log table (RLS admin-only SELECT, service_role-only writes).
+- Erasure Audit Log feature: erase endpoint writes audit row (who/whom/when/preserved
+  counts); GET /api/admin/erasure-audit; Admin UI audit section. Erase button hidden
+  for already-erased clients. Verified by testing agent (10/10 + frontend).
+- KNOWN GAP (flagged to user): Client B (576baf05) was erased BEFORE the audit table
+  existed, so it has NO audit row (log has entries for C and D only). Backfill needs
+  user decision (timestamp would be approximate).
+- Seed convention: *@seed.flyboytest.com / SeedTest#2026!, is_seed_data=true,
+  company=SEED_TEST_DATA. Clients B, C, D erased; Client A intact control.
+
 ## Implemented (June 2026)
 - Full schema + RLS SQL — RUN BY USER, tables live in Supabase.
 - Adversarial RLS test /app/tests/rls_adversarial_test.py — 16/16 passed both

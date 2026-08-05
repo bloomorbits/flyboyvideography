@@ -109,7 +109,7 @@ export default function Admin() {
               <option key={c.id} value={c.id}>{c.full_name || c.email} {c.role === "admin" ? "(admin)" : ""}</option>
             ))}
           </select>
-          {selected && clients.find((x) => x.id === selected)?.role !== "admin" && (
+          {selected && (() => { const c = clients.find((x) => x.id === selected); return c?.role !== "admin" && !c?.email?.endsWith("@anonymized.invalid"); })() && (
             <Btn data-testid="admin-erase-client-btn" variant="danger" onClick={eraseClient} className="shrink-0">
               GDPR erase
             </Btn>
