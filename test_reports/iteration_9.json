@@ -1,0 +1,24 @@
+{
+  "summary": "Full frontend regression of Flyboy Videography public site on :3001. All 12 requested features verified. Zero console errors on / and /services (no duplicate-key Marquee warning). Sticky nav toggles data-scrolled false→true past 24px. Hero player mechanics: timecode ticked 00:00→00:03 in ~2s, click at 75% of scrubber jumped to 02:05/02:47 (correct proportion), mute toggle flipped aria-label Unmute→Mute, 'Showreel · placeholder' present, headline exactly 'Turning visuals into value'. Custom cursor rendered on desktop, followed mouse (transform translate(200,200)), expanded to h-14 w-14 with 'view' label on hovering nav-enquire. 23 .reveal nodes, 12 gained .reveal-in after scroll. 3 marquee-divider strips found. .glass-card computed backdrop-filter=blur(14px), bg=rgba(255,255,255,0.45), hover transform lifted from none → matrix(1.01,0,0,1.01,0,-4). All pricing tokens present (£250/£400/£700/£150/£50/£100/£200, MOST POPULAR, Naming Ceremony, Gender Reveal, Graduation, Lifestyle). SSR HTML contains headline + £700 + exactly 2 JSON-LD script tags (spec said 1 — see note). Home hero identical, hero-services-cta navigated to /services. Portal on :3000 returned HTTP 200 and rendered sign-in page.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Spec said 'exactly 1 JSON-LD block' in SSR for /services but the raw HTML contains 2 <script type=\"application/ld+json\"> tags. Likely both LocalBusiness + Service (or per-package) schemas were kept. Confirm whether this is intentional — flagging only because the review spec explicitly said 1."
+  ],
+  "critical_code_review_comments": [
+    "Marquee.js duplicates the same row twice with identical key set ({it}-{i}); currently OK because they live in separate parent <div>s (React scopes keys per-parent) — no warning fired. If ever flattened into a single parent this would regress; consider prefixing second copy with 'b-' for safety.",
+    "HeroPlayer setInterval runs even when tab is hidden/off-screen; low-priority perf nit."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All design-system additions (cursor, sticky nav, hero player, reveals, marquee, glass cards) verified passing. Only ambiguity: SSR has 2 JSON-LD blocks vs spec wording of 1 — confirm with main agent whether intentional. Portal on :3000 healthy.",
+  "rca of the issue": "No blocking issues."
+}

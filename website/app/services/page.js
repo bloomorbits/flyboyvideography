@@ -1,4 +1,7 @@
 import { packages, graduation, extras, bookingTerms } from "../../lib/pricing";
+import HeroPlayer from "../components/HeroPlayer";
+import Marquee from "../components/Marquee";
+import Reveal from "../components/Reveal";
 
 export const metadata = {
   title: "Services & Pricing",
@@ -7,14 +10,13 @@ export const metadata = {
 };
 
 const gbp = (n) => `£${n}`;
+const CATEGORIES = ["Weddings", "Birthdays", "Naming Ceremonies", "Gender Reveals", "Lifestyle", "Graduations", "Extra Reels"];
 
 function TierCard({ tier, hoursOnly }) {
   return (
     <div
       data-testid={`tier-${tier.name.toLowerCase()}`}
-      className={`relative flex flex-col rounded-lg border p-8 ${
-        tier.popular ? "border-ink bg-dune" : "border-dune bg-sand"
-      }`}
+      className={`glass-card relative flex flex-col rounded-lg p-8 ${tier.popular ? "!border-ink/40" : ""}`}
     >
       {tier.popular && (
         <span className="absolute -top-3 left-8 rounded-full bg-ink px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-cream">
@@ -37,6 +39,15 @@ function TierCard({ tier, hoursOnly }) {
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+function SectionBackdrop() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="absolute -right-24 top-8 h-72 w-72 rounded-full bg-dune opacity-60 blur-3xl" />
+      <div className="absolute -left-24 bottom-0 h-64 w-64 rounded-full bg-sand opacity-80 blur-3xl" />
     </div>
   );
 }
@@ -76,86 +87,108 @@ export default function ServicesPage() {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
-      <section className="bg-coal text-cream">
-        <div className="mx-auto max-w-6xl px-6 py-24 md:py-32">
-          <p className="font-mono text-xs uppercase tracking-[0.35em] text-dune">Services &amp; Pricing</p>
-          <h1 className="mt-6 max-w-3xl font-display text-4xl font-bold leading-tight tracking-tight md:text-6xl">
-            Honest pricing. Cinematic results.
-          </h1>
-          <p className="mt-6 max-w-xl text-lg text-dune">
-            Every package is shot and edited by Flyboy. Pick a tier, add extra reels if you need them — no hidden fees.
-          </p>
-        </div>
-      </section>
+      <HeroPlayer
+        kicker="Services & Pricing"
+        headline="Turning visuals into value"
+        sub="Every package is shot and edited by Flyboy. Pick a tier, add extra reels if you need them — no hidden fees."
+      />
 
-      {packages.map((pkg) => (
-        <section key={pkg.id} id={pkg.id} className="border-b border-dune">
-          <div className="mx-auto max-w-6xl px-6 py-16 md:py-20">
-            <h2 className="font-display text-3xl font-bold tracking-tight md:text-4xl">{pkg.title}</h2>
-            {pkg.hoursOnly && (
-              <p className="mt-2 font-mono text-xs uppercase tracking-widest text-ink/50">
-                Coverage &amp; pricing — get in touch to discuss your event
-              </p>
-            )}
+      <Marquee items={CATEGORIES} />
+
+      {packages.map((pkg, idx) => (
+        <section key={pkg.id} id={pkg.id} className="relative border-b border-dune">
+          <SectionBackdrop />
+          <div className="relative mx-auto max-w-6xl px-6 py-16 md:py-20">
+            <Reveal>
+              <h2 className="font-display text-3xl font-bold tracking-tight md:text-4xl">{pkg.title}</h2>
+              {pkg.hoursOnly && (
+                <p className="mt-2 font-mono text-xs uppercase tracking-widest text-ink/50">
+                  Coverage &amp; pricing — get in touch to discuss your event
+                </p>
+              )}
+            </Reveal>
             <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-3">
-              {pkg.tiers.map((tier) => (
-                <TierCard key={tier.name} tier={tier} hoursOnly={pkg.hoursOnly} />
+              {pkg.tiers.map((tier, i) => (
+                <Reveal key={tier.name} delay={i * 100}>
+                  <TierCard tier={tier} hoursOnly={pkg.hoursOnly} />
+                </Reveal>
               ))}
             </div>
           </div>
+          {idx === 1 && (
+            <div className="relative">
+              <Marquee items={CATEGORIES} />
+            </div>
+          )}
         </section>
       ))}
 
-      <section id="graduation" className="border-b border-dune">
-        <div className="mx-auto max-w-6xl px-6 py-16 md:py-20">
-          <h2 className="font-display text-3xl font-bold tracking-tight md:text-4xl">{graduation.title}</h2>
-          <div className="mt-10 max-w-md">
-            <div data-testid="tier-graduation" className="rounded-lg border border-dune bg-sand p-8">
-              <p className="font-mono text-4xl font-bold tracking-tight">{gbp(graduation.price)}</p>
-              <p className="mt-1 font-mono text-xs uppercase tracking-widest text-ink/60">{graduation.coverage}</p>
-              <ul className="mt-6 space-y-2.5 border-t border-ink/10 pt-5 text-sm text-ink/80">
-                {graduation.features.map((f) => (
-                  <li key={f} className="flex gap-2.5">
-                    <span aria-hidden className="mt-2 h-1 w-1 shrink-0 rounded-full bg-ink" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
+      <section id="graduation" className="relative border-b border-dune">
+        <SectionBackdrop />
+        <div className="relative mx-auto max-w-6xl px-6 py-16 md:py-20">
+          <Reveal>
+            <h2 className="font-display text-3xl font-bold tracking-tight md:text-4xl">{graduation.title}</h2>
+          </Reveal>
+          <Reveal delay={100}>
+            <div className="mt-10 max-w-md">
+              <div data-testid="tier-graduation" className="glass-card rounded-lg p-8">
+                <p className="font-mono text-4xl font-bold tracking-tight">{gbp(graduation.price)}</p>
+                <p className="mt-1 font-mono text-xs uppercase tracking-widest text-ink/60">{graduation.coverage}</p>
+                <ul className="mt-6 space-y-2.5 border-t border-ink/10 pt-5 text-sm text-ink/80">
+                  {graduation.features.map((f) => (
+                    <li key={f} className="flex gap-2.5">
+                      <span aria-hidden className="mt-2 h-1 w-1 shrink-0 rounded-full bg-ink" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
-          </div>
+          </Reveal>
         </div>
       </section>
 
-      <section id="extras" className="border-b border-dune bg-sand">
-        <div className="mx-auto max-w-6xl px-6 py-16 md:py-20">
-          <h2 className="font-display text-3xl font-bold tracking-tight md:text-4xl">{extras.title}</h2>
-          <p className="mt-2 font-mono text-xs uppercase tracking-widest text-ink/50">{extras.subtitle}</p>
+      <Marquee items={["Add-ons", "Extra Reels", "Any Package"]} />
+
+      <section id="extras" className="relative border-b border-dune bg-sand">
+        <div className="relative mx-auto max-w-6xl px-6 py-16 md:py-20">
+          <Reveal>
+            <h2 className="font-display text-3xl font-bold tracking-tight md:text-4xl">{extras.title}</h2>
+            <p className="mt-2 font-mono text-xs uppercase tracking-widest text-ink/50">{extras.subtitle}</p>
+          </Reveal>
           <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3">
-            {extras.items.map((item) => (
-              <div
-                key={item.label}
-                data-testid={`extra-${item.price}`}
-                className="flex items-center justify-between rounded-lg border border-dune bg-cream px-6 py-5"
-              >
-                <span className="text-sm font-medium">{item.label}</span>
-                <span className="font-mono text-xl font-bold">{gbp(item.price)}</span>
-              </div>
+            {extras.items.map((item, i) => (
+              <Reveal key={item.label} delay={i * 100}>
+                <div
+                  data-testid={`extra-${item.price}`}
+                  className="glass-card flex items-center justify-between rounded-lg px-6 py-5"
+                >
+                  <span className="text-sm font-medium">{item.label}</span>
+                  <span className="font-mono text-xl font-bold">{gbp(item.price)}</span>
+                </div>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="booking-terms" className="bg-coal text-cream">
-        <div className="mx-auto max-w-6xl px-6 py-16 md:py-20">
-          <h2 className="font-display text-2xl font-bold tracking-tight md:text-3xl">Booking terms</h2>
-          <p data-testid="booking-terms" className="mt-4 max-w-xl text-lg text-dune">{bookingTerms}</p>
-          <a
-            href="mailto:hello@flyboyvideography.com"
-            data-testid="services-enquire-cta"
-            className="mt-8 inline-block rounded-full bg-cream px-8 py-3 font-medium text-ink transition-opacity hover:opacity-85"
-          >
-            Enquire about your date
-          </a>
+      <section id="booking-terms" className="relative overflow-hidden bg-coal text-cream">
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          <div className="blob blob-2" />
+          <div className="grain" />
+        </div>
+        <div className="relative z-10 mx-auto max-w-6xl px-6 py-16 md:py-20">
+          <Reveal>
+            <h2 className="font-display text-2xl font-bold tracking-tight md:text-3xl">Booking terms</h2>
+            <p data-testid="booking-terms" className="mt-4 max-w-xl text-lg text-dune">{bookingTerms}</p>
+            <a
+              href="mailto:hello@flyboyvideography.com"
+              data-testid="services-enquire-cta"
+              className="mt-8 inline-block rounded-full bg-cream px-8 py-3 font-medium text-ink transition-opacity hover:opacity-85"
+            >
+              Enquire about your date
+            </a>
+          </Reveal>
         </div>
       </section>
     </>
