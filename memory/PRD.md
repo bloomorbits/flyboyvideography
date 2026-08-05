@@ -1,4 +1,30 @@
-# PRD — Flyboy Videography Client Portal
+# PRD — Flyboy Videography Client Portal + Public Site
+
+## Implemented (June 2026) — session 7 (PUBLIC SITE PIVOT)
+- New SEPARATE Next.js 15 app at /app/website (App Router, TRUE SSR) — runs on
+  port 3001 in this env (only port 3000 is externally routable; deploy target is
+  two separate Vercel projects: public site at root domain, CRA portal on
+  portal./app. subdomain, per user).
+- Services & Pricing page (/services) with client's EXACT content: Wedding &
+  Birthday (Basic £250/Classic £400 MOST POPULAR/Royale £700 with full
+  deliverables), Naming Ceremony & Gender Reveal + Lifestyle (hours/price ONLY —
+  client explicitly forbade inventing deliverables: £200/2h, £300/4h, £450/6h),
+  Graduation Reels £150, Extra Reels £50/£100/£200, booking terms (50% deposit,
+  balance 3–5 days before). Data in /app/website/lib/pricing.js.
+- Public-site design tokens (CONFIRMED this session): bg #FAF8F4, surfaces
+  #F1EBE0/#E9E1D2, ink #17140F, dark hero #141210; Space Grotesk headlines,
+  Inter body, JetBrains Mono pricing/meta.
+- SSR + JSON-LD (GBP OfferCatalog) verified in raw HTML; iteration_8: 100% pass,
+  content verbatim, zero invented deliverables, portal + backend regression OK.
+
+## TRACKED FOLLOW-UPS (user-ordered, NOT started)
+- P0 next: Portfolio page on the public site; blog later.
+- P1: PORTAL RESTYLE onto the white/black/beige token system (replace dark theme
+  + cyan accent) — user said "flag as tracked follow-up, don't start today".
+- P1: Subdomain deployment split (Vercel: root = Next site, portal = subdomain).
+- Held: purge confirmation modal, new-cut upload flow, invoice PDFs, Stripe,
+  Resend alerts, erasure request notes, approve-cut extras.
+
 
 ## Implemented (June 2026) — session 6
 - Request Changes: POST /api/deliverables/{id}/request-changes (owner-scoped, from
