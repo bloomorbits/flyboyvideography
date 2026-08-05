@@ -96,6 +96,26 @@ export default function Admin() {
     }
   };
 
+  const purgeSeed = async () => {
+    const typed = window.prompt(
+      "DESTRUCTIVE: this permanently deletes every record tagged is_seed_data (test clients, bookings, deliverables, invoices, comments) and their login accounts. The erasure audit log is preserved. Type PURGE to confirm:"
+    );
+    if (typed === null) return;
+    if (typed !== "PURGE") return toast.error("Purge cancelled — confirmation text must be exactly PURGE");
+    try {
+      const { data } = await api.post("/admin/purge-seed-data", { confirmation: "PURGE" });
+      const d = data.deleted;
+      toast.success(`Purged: ${d.clients} clients, ${d.bookings} bookings, ${d.deliverables} deliverables, ${d.invoices} invoices, ${d.review_threads} comments, ${d.retainer_subscriptions} retainers`);
+      if (data.skipped_admin_accounts?.length) toast.info(`Kept admin accounts: ${data.skipped_admin_accounts.join(", ")}`);
+      setSelected("");
+      const res = await api.get("/admin/clients");
+      setClients(res.data);
+      loadAudit();
+    } catch (err) {
+      toast.error(typeof err.response?.data?.detail === "string" ? err.response.data.detail : "Purge failed");
+    }
+  };
+
   return (
     <div data-testid="admin-page">
       <PageHeader kicker="Studio internal" title="Admin console" />
@@ -250,7 +270,14 @@ export default function Admin() {
           {audit.map((a, i) => (
             <div key={a.id} className={`px-6 py-4 ${i > 0 ? "border-t border-line" : ""}`} data-testid={`audit-entry-${i}`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-mono text-sm font-bold text-warn">{a.anonymized_email}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-mono text-sm font-bold text-warn">{a.anonymized_email}</p>
+                  {a.backfilled && (
+                    <span data-testid={`audit-backfilled-badge-${i}`} className="rounded bg-warn/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-warn">
+                      Backfilled
+                    </span>
+                  )}
+                </div>
                 <p className="font-mono text-xs text-zinc-500">{fmtDate(a.created_at?.slice(0, 10))}</p>
               </div>
               <p className="mt-1 text-sm text-zinc-400">
@@ -259,8 +286,27 @@ export default function Admin() {
               <p className="mt-1 font-mono text-xs text-zinc-500">
                 preserved: {a.bookings_preserved} bookings · {a.deliverables_preserved} deliverables · {a.invoices_preserved} invoices
               </p>
+              {a.note && <p className="mt-2 text-xs italic text-zinc-500">{a.note}</p>}
             </div>
           ))}
+        </Card>
+      </div>
+
+      <div className="mt-12">
+        <h2 className="mb-4 font-display text-2xl font-semibold tracking-tight text-red-400">Danger zone</h2>
+        <Card className="border-red-400/30 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="font-bold">Purge all seed / test data</p>
+              <p className="mt-1 max-w-xl text-sm text-zinc-400">
+                Permanently deletes every record tagged <code className="font-mono text-xs text-warn">is_seed_data</code> and the matching test login accounts.
+                Admin accounts and the erasure audit log are preserved. Requires typed confirmation.
+              </p>
+            </div>
+            <Btn data-testid="purge-seed-btn" variant="danger" onClick={purgeSeed}>
+              Purge seed data
+            </Btn>
+          </div>
         </Card>
       </div>
     </div>

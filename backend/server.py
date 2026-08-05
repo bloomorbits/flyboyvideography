@@ -348,3 +348,45 @@ def admin_erase_client(client_id: str, admin=Depends(require_admin)):
 @app.get("/api/admin/erasure-audit")
 def admin_erasure_audit(admin=Depends(require_admin)):
     return sb.table("erasure_audit_log").select("*").order("created_at", desc=True).execute().data
+
+
+class PurgeBody(BaseModel):
+    confirmation: str
+
+
+@app.post("/api/admin/purge-seed-data")
+def admin_purge_seed_data(body: PurgeBody, admin=Depends(require_admin)):
+    """Deletes every is_seed_data record + seed auth accounts. Audit log is preserved."""
+    if body.confirmation != "PURGE":
+        raise HTTPException(422, "Confirmation text must be exactly 'PURGE'")
+    seed_clients = sb.table("clients").select("id,user_id,email,role").eq("is_seed_data", True).execute().data
+    skipped_admins = [c["email"] for c in seed_clients if c["role"] == "admin" or c["id"] == admin["id"]]
+    targets = [c for c in seed_clients if c["role"] != "admin" and c["id"] != admin["id"]]
+
+    deleted = {}
+    for t in ["review_threads", "deliverables", "invoices", "retainer_subscriptions", "bookings"]:
+        r = sb.table(t).delete().eq("is_seed_data", True).execute()
+        deleted[t] = len(r.data or [])
+
+    skipped_records = []
+    removed_clients = 0
+    for c in targets:
+        remaining = sb.table("invoices").select("id", count="exact").eq("client_id", c["id"]).execute().count
+        if remaining:
+            skipped_records.append(f"{c['email']} ({remaining} non-seed invoices retained)")
+            continue
+        try:
+            sb.auth.admin.delete_user(c["user_id"])
+        except Exception:
+            pass
+        sb.table("clients").delete().eq("id", c["id"]).execute()
+        removed_clients += 1
+    deleted["clients"] = removed_clients
+
+    return {
+        "purged": True,
+        "deleted": deleted,
+        "skipped_admin_accounts": skipped_admins,
+        "skipped_clients_with_real_records": skipped_records,
+        "audit_log": "erasure_audit_log preserved (compliance record)",
+    }
