@@ -2,24 +2,23 @@
 
 Supabase project: https://pnqqmzszasvfnvnnonvd.supabase.co (auth + Postgres; NO MongoDB)
 
-## Admin account (auto-promoted via backend ADMIN_EMAILS on first login AFTER schema SQL is run)
+## Admin account (recreated 2026-06 after purge/manual auth cleanup; auto-promoted via ADMIN_EMAILS)
 - Email: flyboy.admin.demo@gmail.com
 - Password: AdminStudio#2026
-- Created via Supabase admin API, email pre-confirmed.
+- clients row is_seed_data=false (protected from purge)
 
-## Client account
+## Client account (recreated + freshly seeded)
 - Email: demo.client.frameform@gmail.com
 - Password: DemoClient#2026
-- Email pre-confirmed.
+- Seed data: 2 bookings, 1 retainer, 3 deliverables, 2 comments, 2 invoices (all is_seed_data=true)
 
-## Seed test clients (RLS adversarial test)
-- Client A: client.a@seed.flyboytest.com / SeedTest#2026! (intact)
-- Clients B, C, D (@seed.flyboytest.com) — GDPR-ERASED, logins permanently disabled
-- All seed rows carry is_seed_data=true (migration 002 applied)
+## Current DB state
+- Exactly 2 clients (admin + demo). Old seed clients A-D purged/erased.
+- erasure_audit_log: 3 entries (B backfilled=true with note, C, D) — never purged.
+- DANGER: /api/admin/purge-seed-data with confirmation "PURGE" deletes all tagged
+  data including the demo client. Test the guard only (wrong text → 422).
 
-## Important state
-- Schema SQL HAS been run by the user; tables + RLS live. Demo data seeded for demo client.
-- Email confirmation is still ENABLED in the Supabase project; new signups via the
-  UI will get "check your email". The two accounts above are pre-confirmed.
-- Supabase email validation rejects made-up domains (email_address_invalid); use
-  gmail.com-style addresses for new signups.
+## Notes
+- Email confirmation still ENABLED in Supabase; fake domains rejected on signup.
+  Create test users via GoTrue admin API with email_confirm=true, convention
+  *@seed.flyboytest.com / SeedTest#2026!, always is_seed_data=true.

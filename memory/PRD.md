@@ -29,6 +29,22 @@ clients, bookings, retainer_subscriptions, deliverables, review_threads, invoice
 - review_threads UPDATE policy: author_user_id = auth.uid() (clients can only
   update their own comments — fixed after user review, 2026-06).
 
+## Implemented (June 2026) — session 4
+- Migration 003 (user ran): erasure_audit_log gained backfilled + note columns;
+  Client B's pre-log erasure BACKFILLED (backfilled=true, note with ~19:50 UTC
+  actual time). Audit log = 3 entries.
+- Seed Data Purge: POST /api/admin/purge-seed-data (typed {confirmation:"PURGE"}
+  required, 422 otherwise; admin-only). Deletes all is_seed_data rows + seed auth
+  accounts; skips admins + clients with non-seed invoices (checked BEFORE deletes);
+  audit log preserved. Admin UI Danger zone with window.prompt typed confirmation.
+- REAL PURGE EXECUTED with user approval + proof shown (0 tagged rows in all 6
+  tables, admin intact, audit intact). User then manually cleared remaining auth
+  users, which deleted admin + demo accounts → both RECREATED fresh (new user_ids).
+  Admin account untagged (is_seed_data=false) so purge never eligible.
+- Seed bug fixed: first booking dict missing is_seed_data.
+- Testing agent iteration_4: 11/11 backend + full frontend pass (guard-only, no
+  destructive calls). Purge ordering hardened post-report.
+
 ## Implemented (June 2026) — session 3
 - Migration 002 (user ran it, verified): is_seed_data boolean on all 6 tables,
   retroactive tagging of ALL test data (4 clients incl. erased Client B; 0 untagged

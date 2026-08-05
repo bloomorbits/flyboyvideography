@@ -363,18 +363,23 @@ def admin_purge_seed_data(body: PurgeBody, admin=Depends(require_admin)):
     skipped_admins = [c["email"] for c in seed_clients if c["role"] == "admin" or c["id"] == admin["id"]]
     targets = [c for c in seed_clients if c["role"] != "admin" and c["id"] != admin["id"]]
 
+    # check for non-seed (real) invoices BEFORE any deletion
+    skipped_records = []
+    deletable = []
+    for c in targets:
+        real = sb.table("invoices").select("id", count="exact").eq("client_id", c["id"]).eq("is_seed_data", False).execute().count
+        if real:
+            skipped_records.append(f"{c['email']} ({real} non-seed invoices retained)")
+        else:
+            deletable.append(c)
+
     deleted = {}
     for t in ["review_threads", "deliverables", "invoices", "retainer_subscriptions", "bookings"]:
         r = sb.table(t).delete().eq("is_seed_data", True).execute()
         deleted[t] = len(r.data or [])
 
-    skipped_records = []
     removed_clients = 0
-    for c in targets:
-        remaining = sb.table("invoices").select("id", count="exact").eq("client_id", c["id"]).execute().count
-        if remaining:
-            skipped_records.append(f"{c['email']} ({remaining} non-seed invoices retained)")
-            continue
+    for c in deletable:
         try:
             sb.auth.admin.delete_user(c["user_id"])
         except Exception:
