@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 3 verification of erasure_audit_log feature + is_seed_data tagging. Backend: 10/10 new pytest cases pass in /app/backend/tests/iteration3_test.py — GET /api/admin/erasure-audit returns audit rows for admin (contains known entry for erased client C = 1c1be3fb…, performed_by=admin, bookings_preserved=1, invoices_preserved=1); returns 403 for client token, 401 for no token. RLS on erasure_audit_log verified end-to-end: direct PostgREST GET with client JWT returns [] (0 rows), admin JWT returns full list, INSERT with client JWT is rejected with 401 by RLS. End-to-end erase of throwaway Client D (client.d@seed.flyboytest.com) executed: created via GoTrue admin API with email_confirm=true, profile ensured via /api/clients/ensure, clients row + booking tagged is_seed_data=true via service key, admin /erase returned erased=true, audit_logged=true, preserved.bookings=1, audit list grew by exactly +1 with new entry keyed on client D id and performed_by admin email, subsequent login attempt for client D returns non-200, booking survived (is_seed_data=true intact). Idempotency: second erase on client D returns 409. Admin self-erase returns 400. Seeded is_seed_data flag confirmed on demo client's seeded bookings. Frontend: after admin login and navigation to /admin, the Erasure audit log section (data-testid=erasure-audit-log) renders 2 entries (audit-entry-0 and audit-entry-1) — one for the newly created client D and one for previously erased client C — each showing anonymized email (erased-*@anonymized.invalid), performed-by email flyboy.admin.demo@gmail.com and preserved counts (1 bookings · 0 deliverables · 0 invoices for D and 1 · 0 · 1 for C). Selecting an erased client (option label 'Erased Client') from admin-client-select surfaces the erased-client-note element with warning text. Note: initial admin-page render sometimes shows 'No erasures recorded' for ~1s before /admin/erasure-audit resolves; adding a wait_for network idle (or 5s sleep) after navigation is required.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Admin page initial load", "issue": "loadAudit + admin/clients fire before profile.role resolves; results appear ~2-4s after first paint with a brief 'No erasures recorded' flash. Not a blocker but a small loading-state indicator would improve UX.", "affected_selectors": ["erasure-audit-log", "admin-client-select"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/iteration3_test.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iteration3_results.xml"
+  ],
+  "action_items": [
+    "(optional) Hide or disable the GDPR-erase button when the selected client is already erased — currently the button still renders and only fails via a 409 toast (acceptable per spec but slightly confusing UX).",
+    "(optional) Add a lightweight loading state on the admin page for the audit log and client select, since 'No erasures recorded' briefly flashes before data loads."
+  ],
+  "critical_code_review_comments": [
+    "admin_erase_client still writes to the DB (clients, review_threads) BEFORE inserting the audit row. If the audit_log INSERT fails (e.g. constraint added later), the client is already anonymized but no audit trail exists — regulatory risk. Wrap the whole erase in a Postgres RPC/transaction, or insert the audit row FIRST and roll back if any subsequent step fails.",
+    "erasure_audit_log INSERT in server.py doesn't set is_seed_data=false explicitly. If migration 002 defaults it to false that's fine, but explicitly setting it protects against schema drift where the default flips.",
+    "GET /api/admin/erasure-audit returns raw table rows including performed_by_client_id — fine for admin, but consider whether performed_by_client_id or user ids should ever be exposed to non-admin consumers if this list is later reused.",
+    "Frontend Admin.js: eraseClient uses window.confirm — not a bug for internal admin use, but confirm() is blocking and non-styled; consider a styled modal for consistency.",
+    "loadAudit's .catch(() => {}) swallows all errors silently; a toast on failure would help debugging."
+  ],
+  "updated_files": ["/app/backend/tests/iteration3_test.py"],
+  "success_rate": {"backend": "100% (10/10 iteration3 + prior 10/10 backend_test)", "frontend": "100% (audit log + erased-client-note)"},
+  "test_credentials": "Admin flyboy.admin.demo@gmail.com / AdminStudio#2026; Demo client demo.client.frameform@gmail.com / DemoClient#2026; Client A intact; Clients B, C, D now GDPR-erased.",
+  "seed_data_creation": "Created throwaway auth user client.d@seed.flyboytest.com (SeedTest#2026!) via Supabase GoTrue admin API (email_confirm=true), inserted clients row with is_seed_data=true, one bookings row with is_seed_data=true (title 'TEST_ClientD Seed Booking'). Client D has now been GDPR-erased as part of the flow — its clients row is anonymized (erased-11048b78@…), its booking survives with is_seed_data=true, and its login is banned. Client D auth user id remains in auth.users (banned). Do NOT try to re-create client D with the same email without first unbanning or deleting via the admin API.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "erasure_audit_log now has 3 entries (client B 576baf05, client C 1c1be3fb, client D 11048b78). All three are visible in admin-client-select as 'Erased Client'. Client A remains the intact control. Demo client still has seeded data + previously-inserted TEST_ booking/comment from iteration 2. Backend fully green. If you need to re-run test_erase_client_d_full_flow, first delete/unban the client.d auth user via GoTrue admin API and delete its clients row, since the test does auto-detect and rotate password but a hard-banned account can't be re-erased.",
+  "rca of the issue": "N/A — no bugs found in this iteration's feature (audit log + is_seed_data). All acceptance criteria met."
+}
