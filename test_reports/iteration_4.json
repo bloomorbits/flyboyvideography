@@ -1,0 +1,23 @@
+{
+  "summary": "Iteration 4: purge-seed-data guard, backfilled audit entry, and regression. GUARD (never sent PURGE): backend pytest 11/11 pass — POST /api/admin/purge-seed-data returns 401 (no token), 403 (client token even with correct 'PURGE'), 422 for lowercase 'purge', 422 for 'nope', 422 when confirmation field missing. AUDIT: GET /api/admin/erasure-audit (admin) returns exactly 3 rows; exactly one has backfilled=true with anonymized_email=erased-576baf05@anonymized.invalid and a note starting 'BACKFILLED RECORD: erasure actually performed ~2026-08-05 19:50 UTC…'. is_seed_data tagging verified via service key on demo client rows — 0 untagged bookings/deliverables/invoices/retainer_subscriptions rows. REGRESSION (demo client): dashboard shows 2 active bookings, 2 cuts in review, 1 active retainer, 1 open invoice; deliverables page shows 3 cards (Q3 Teaser Cut v2 IN REVIEW, June Social Edit #3 REVISIONS REQUESTED, May Recap Reel FINAL DELIVERED) with BOOKING/RETAINER badges; invoices page shows 2 rows INV-B-3518 (BOOKING, £4,250, SENT) and INV-R-3518 (RETAINER, £3,500, PAID). FRONTEND (admin): /admin renders 3 audit-entry-N; audit-backfilled-badge-0 present on Client B entry with visible italic note text matching backend; Danger zone heading + purge-seed-btn render; clicking purge-seed-btn opens window.prompt — entering wrong text 'purge' and confirming shows toast 'Purge cancelled — confirmation text must be exactly PURGE' AND does NOT delete anything (audit entries reload to 3, backfilled badge count still 1). NO destructive call was ever completed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/iteration4_test.py",
+    "/app/test_reports/pytest/iteration4_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py admin_purge_seed_data: the 'skipped_admins' filter includes any client with role=='admin' OR id==admin.id, but the SELECT already filters by is_seed_data=true — an admin whose clients row is not is_seed_data (production case) wouldn't even be listed. Current behaviour is safe; consider clarifying comment.",
+    "admin_purge_seed_data deletes by is_seed_data=true across 5 tables BEFORE checking per-client invoice remainders. If a seed client somehow had non-seed invoices AND seed invoices, the seed invoices are already gone by the time the per-client 'skipped_clients_with_real_records' check runs. Not a bug for current data (all demo rows are is_seed_data), but the order coupling is fragile. Consider counting non-seed invoices per client BEFORE the bulk table deletes.",
+    "The window.prompt-based confirmation on purge-seed-btn is inherently non-styled and can be bypassed by browser preferences; for a truly destructive admin op, a typed-in-modal confirmation (styled Card + Input) would be more robust and testable. Not blocking — the backend guard is the real safeguard.",
+    "toast.error 'Purge cancelled …' fires on any non-'PURGE' input INCLUDING null/dismiss — good, but consider distinguishing 'cancelled' vs 'wrong text' for UX."
+  ],
+  "updated_files": ["/app/backend/tests/iteration4_test.py"],
+  "success_rate": {"backend": "100% (11/11 iteration4 pytest)", "frontend": "100% (guard + audit UI + regression)"},
+  "test_credentials": "Admin flyboy.admin.demo@gmail.com / AdminStudio#2026; Client demo.client.frameform@gmail.com / DemoClient#2026 (both preserved).",
+  "seed_data_creation": "None. No new accounts or rows created. No destructive calls made. Guard exercised only via wrong-text prompt confirm and via backend 422/403/401 paths.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Fresh state preserved: exactly 3 erasure_audit_log entries (backfilled Client B 576baf05 with note, Client C 1c1be3fb, Client D 11048b78). Demo client seed data intact (2 bookings, 3 deliverables, 2 invoices INV-B-3518 SENT & INV-R-3518 PAID, 1 retainer). The purge-seed-data endpoint is fully guarded — DO NOT send confirmation='PURGE' or type PURGE in the UI prompt. Any future guard tests should reuse /app/backend/tests/iteration4_test.py."
+}

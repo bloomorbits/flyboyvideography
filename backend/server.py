@@ -131,7 +131,7 @@ def seed_demo(user=Depends(get_auth_user)):
     bookings = sb.table("bookings").insert([
         {"client_id": cid, "title": "Brand Film — HQ Launch", "shoot_type": "Brand Film",
          "shoot_date": str(today + timedelta(days=12)), "location": "Downtown Studio A",
-         "status": "confirmed", "budget": 8500, "notes": "Two-day shoot, drone unit on day 2."},
+         "status": "confirmed", "budget": 8500, "notes": "Two-day shoot, drone unit on day 2.", "is_seed_data": True},
         {"client_id": cid, "title": "Product Teaser — Q3 Drop", "shoot_type": "Product",
          "shoot_date": str(today - timedelta(days=20)), "location": "White Cyc Stage",
          "status": "in_post", "budget": 4200, "notes": "Macro pass complete, awaiting color.", "is_seed_data": True},
