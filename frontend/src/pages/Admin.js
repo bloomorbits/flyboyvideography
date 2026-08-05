@@ -60,7 +60,7 @@ export default function Admin() {
       } else if (tab === "subscription") {
         await api.post("/admin/subscriptions", { client_id: selected, package_name: form.package_name, monthly_price: Number(form.monthly_price || 0), videos_per_month: Number(form.videos_per_month || 1), renews_on: form.renews_on || null });
       } else if (tab === "deliverable") {
-        await api.post("/admin/deliverables", { client_id: selected, title: form.title, booking_id: form.booking_id || null, subscription_id: form.subscription_id || null, status: form.status || "in_review", video_url: form.video_url, version: Number(form.version || 1), notes: form.notes });
+        await api.post("/admin/deliverables", { client_id: selected, title: form.title, booking_id: form.booking_id || null, subscription_id: form.subscription_id || null, status: form.status || "in_review", video_url: form.video_url, version: Number(form.version || 1), included_revision_rounds: Number(form.included_revision_rounds || 2), notes: form.notes });
       } else if (tab === "invoice") {
         await api.post("/admin/invoices", { client_id: selected, source_type: form.source_type, booking_id: form.source_type === "booking" ? form.booking_id : null, subscription_id: form.source_type === "subscription" ? form.subscription_id : null, invoice_number: form.invoice_number, amount: Number(form.amount || 0), status: form.inv_status || "sent", due_on: form.due_on || null });
       }
@@ -195,6 +195,7 @@ export default function Admin() {
                   </div>
                   <div><Label>Video URL (embed)</Label><Input value={form.video_url || ""} onChange={set("video_url")} placeholder="https://player.vimeo.com/…" /></div>
                   <div><Label>Version</Label><Input type="number" value={form.version || ""} onChange={set("version")} placeholder="1" /></div>
+                  <div><Label>Included revision rounds</Label><Input data-testid="admin-deliv-rounds" type="number" value={form.included_revision_rounds || ""} onChange={set("included_revision_rounds")} placeholder="2" /></div>
                   <div className="md:col-span-2"><Label>Notes</Label><Input value={form.notes || ""} onChange={set("notes")} /></div>
                 </>
               )}
@@ -244,7 +245,7 @@ export default function Admin() {
               <div key={d.id} className={`flex items-center justify-between gap-4 px-6 py-4 ${i > 0 ? "border-t border-line" : ""}`} data-testid={`admin-deliv-row-${i}`}>
                 <div>
                   <p className="font-semibold">{d.title}</p>
-                  <p className="font-mono text-xs text-zinc-500">v{d.version}</p>
+                  <p className="font-mono text-xs text-zinc-500">v{d.version} · revisions {d.revision_rounds_used ?? 0}/{d.included_revision_rounds ?? 0}</p>
                 </div>
                 <div className="flex items-center gap-4">
                   <StatusPill status={d.status} />

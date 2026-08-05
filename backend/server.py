@@ -143,9 +143,62 @@ def approve_deliverable(deliverable_id: str, user=Depends(get_auth_user)):
         raise HTTPException(409, f"Cannot approve a deliverable in status '{d['status']}'")
     updated = sb.table("deliverables").update({
         "status": "approved",
+        "approved_by_user_id": user.id,
+        "approved_by_name": client.get("full_name") or client["email"],
+        "approved_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", deliverable_id).execute().data[0]
     return updated
+
+
+class RequestChangesBody(BaseModel):
+    note: str
+    timestamp_seconds: Optional[float] = None
+
+
+@app.post("/api/deliverables/{deliverable_id}/request-changes")
+def request_changes(deliverable_id: str, body: RequestChangesBody, user=Depends(get_auth_user)):
+    """Flips cut back to revisions_requested, logs the note in the review thread, tracks revision rounds."""
+    client = get_client_row(user)
+    if not client:
+        raise HTTPException(404, "Client profile not found")
+    if not body.note.strip():
+        raise HTTPException(422, "A revision note is required")
+    r = sb.table("deliverables").select("*").eq("id", deliverable_id).execute()
+    if not r.data:
+        raise HTTPException(404, "Deliverable not found")
+    d = r.data[0]
+    if d["client_id"] != client["id"] and client["role"] != "admin":
+        raise HTTPException(403, "Not your deliverable")
+    if d["status"] not in ("in_review", "approved"):
+        raise HTTPException(409, f"Cannot request changes on a deliverable in status '{d['status']}'")
+    rounds_used = (d.get("revision_rounds_used") or 0) + 1
+    included = d.get("included_revision_rounds") or 0
+    updated = sb.table("deliverables").update({
+        "status": "revisions_requested",
+        "revision_rounds_used": rounds_used,
+        "approved_by_user_id": None,
+        "approved_by_name": None,
+        "approved_at": None,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", deliverable_id).execute().data[0]
+    sb.table("review_threads").insert({
+        "deliverable_id": deliverable_id,
+        "client_id": d["client_id"],
+        "author_user_id": user.id,
+        "author_name": client.get("full_name") or client["email"],
+        "author_role": client["role"],
+        "version": d["version"],
+        "timestamp_seconds": body.timestamp_seconds,
+        "comment": f"[REVISION ROUND {rounds_used}] {body.note.strip()}",
+        "is_seed_data": bool(d.get("is_seed_data")),
+    }).execute()
+    return {
+        "deliverable": updated,
+        "revision_rounds_used": rounds_used,
+        "included_revision_rounds": included,
+        "extra_round": rounds_used > included,
+    }
 
 
 @app.post("/api/demo/seed")
@@ -258,6 +311,7 @@ class DeliverableIn(BaseModel):
     video_url: Optional[str] = None
     final_file_url: Optional[str] = None
     notes: Optional[str] = None
+    included_revision_rounds: int = 2
 
 
 class InvoiceIn(BaseModel):
@@ -277,6 +331,7 @@ class PatchBody(BaseModel):
     video_url: Optional[str] = None
     final_file_url: Optional[str] = None
     notes: Optional[str] = None
+    included_revision_rounds: Optional[int] = None
 
 
 @app.post("/api/admin/bookings")

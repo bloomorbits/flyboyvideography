@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, CheckCircle2, Circle, Download, ThumbsUp } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Circle, Download, ThumbsUp, Undo2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -15,6 +15,9 @@ export default function DeliverableDetail() {
   const [form, setForm] = useState({ timecode: "", comment: "" });
   const [busy, setBusy] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [showChanges, setShowChanges] = useState(false);
+  const [changeForm, setChangeForm] = useState({ timecode: "", note: "" });
+  const [requesting, setRequesting] = useState(false);
 
   const load = useCallback(async () => {
     const [{ data: d }, { data: c }] = await Promise.all([
@@ -67,7 +70,33 @@ export default function DeliverableDetail() {
     }
   };
 
+  const requestChanges = async (e) => {
+    e.preventDefault();
+    setRequesting(true);
+    try {
+      const { data } = await api.post(`/deliverables/${id}/request-changes`, {
+        note: changeForm.note,
+        timestamp_seconds: parseTimecode(changeForm.timecode),
+      });
+      if (data.extra_round) {
+        toast.warning(`Revision round ${data.revision_rounds_used} exceeds the ${data.included_revision_rounds} included rounds — this round may be billed as an extra.`);
+      } else {
+        toast.success(`Changes requested — revision round ${data.revision_rounds_used} of ${data.included_revision_rounds} included`);
+      }
+      setChangeForm({ timecode: "", note: "" });
+      setShowChanges(false);
+      await load();
+    } catch (err) {
+      toast.error(typeof err.response?.data?.detail === "string" ? err.response.data.detail : "Request failed");
+    } finally {
+      setRequesting(false);
+    }
+  };
+
   if (!deliv) return <p className="font-mono text-xs uppercase tracking-[0.3em] text-zinc-500">Loading…</p>;
+
+  const roundsUsed = deliv.revision_rounds_used ?? 0;
+  const roundsIncluded = deliv.included_revision_rounds ?? 0;
 
   return (
     <div data-testid="deliverable-detail-page">
@@ -80,8 +109,16 @@ export default function DeliverableDetail() {
           <div className="mb-2 flex items-center gap-3">
             <SourceBadge type={deliv.booking_id ? "booking" : "subscription"} />
             <span className="font-mono text-xs text-zinc-500">VERSION {deliv.version}</span>
+            <span data-testid="revision-rounds-chip" className={`rounded px-2 py-0.5 font-mono text-[11px] font-bold ${roundsUsed >= roundsIncluded ? "bg-warn/15 text-warn" : "bg-zinc-800 text-zinc-400"}`}>
+              REVISIONS {roundsUsed}/{roundsIncluded} INCLUDED
+            </span>
           </div>
           <h1 className="font-display text-4xl font-bold tracking-tighter">{deliv.title}</h1>
+          {deliv.approved_at && (
+            <p data-testid="approval-record" className="mt-2 flex items-center gap-2 text-sm text-ok">
+              <CheckCircle2 size={15} /> Approved by {deliv.approved_by_name} · {fmtDate(deliv.approved_at.slice(0, 10))}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-4">
           {["in_review", "revisions_requested"].includes(deliv.status) && (
@@ -91,9 +128,39 @@ export default function DeliverableDetail() {
               </span>
             </Btn>
           )}
+          {["in_review", "approved"].includes(deliv.status) && (
+            <Btn data-testid="request-changes-btn" variant="danger" onClick={() => setShowChanges(!showChanges)}>
+              <span className="flex items-center gap-2">
+                <Undo2 size={15} /> Request changes
+              </span>
+            </Btn>
+          )}
           <StatusPill status={deliv.status} testId="deliverable-status" />
         </div>
       </div>
+
+      {showChanges && (
+        <div className="rise mb-8 rounded-md border border-warn/40 bg-warn/5 p-6">
+          {roundsUsed >= roundsIncluded && (
+            <p data-testid="extra-round-warning" className="mb-4 font-mono text-xs font-bold uppercase tracking-widest text-warn">
+              Heads up: all {roundsIncluded} included revision rounds are used — this round may be billed as an extra.
+            </p>
+          )}
+          <form onSubmit={requestChanges} className="flex flex-wrap items-end gap-4">
+            <div className="w-28">
+              <Label>Timecode</Label>
+              <Input data-testid="changes-timecode-input" value={changeForm.timecode} onChange={(e) => setChangeForm({ ...changeForm, timecode: e.target.value })} placeholder="01:24" className="font-mono" />
+            </div>
+            <div className="min-w-64 flex-1">
+              <Label>What needs to change?</Label>
+              <Input data-testid="changes-note-input" value={changeForm.note} onChange={(e) => setChangeForm({ ...changeForm, note: e.target.value })} placeholder="Describe the revisions you need…" required />
+            </div>
+            <Btn data-testid="changes-submit-btn" type="submit" disabled={requesting}>
+              {requesting ? "Sending…" : "Send revision request"}
+            </Btn>
+          </form>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-3">
         <div className="xl:col-span-2">

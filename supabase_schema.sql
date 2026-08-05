@@ -72,6 +72,11 @@ create table if not exists public.deliverables (
   video_url text,
   final_file_url text,
   notes text,
+  included_revision_rounds integer not null default 2,
+  revision_rounds_used integer not null default 0,
+  approved_by_user_id uuid,
+  approved_by_name text,
+  approved_at timestamptz,
   is_seed_data boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
