@@ -1,0 +1,63 @@
+{
+  "summary": "Frontend-only test of new Next.js public site at http://localhost:3001 (/services and /) plus regression on CRA portal (:3000) and backend /api/health. All requested checks passed: SSR delivers full content in raw HTML, content matches client spec verbatim, hoursOnly sections have zero invented deliverables, JSON-LD present exactly once with GBP offers, navigation works, metadata title correct, CRA auth page still renders, /api/health returns ok.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "checks_performed": {
+    "ssr_raw_html_services": {
+      "http_status": 200,
+      "html_bytes": 74582,
+      "jsonld_blocks": 1,
+      "jsonld_currency": "GBP",
+      "contains_pricing": ["£250","£400","£700","£200","£300","£450","£150","£50","£100"],
+      "contains_titles": ["Wedding Videography","Birthday Celebration","Naming Ceremony & Gender Reveal","Lifestyle Shoot","Graduation Reels"],
+      "most_popular_badge": true,
+      "coverage_strings": ["3 hours coverage","6 hours coverage","Full-day coverage (10–12 hours)","1.5 hours coverage","2 hours coverage","4 hours coverage","6 hours coverage"],
+      "booking_terms_exact": "A 50% deposit secures your date. The remaining balance is due 3–5 days before your event.",
+      "graduation_deliverables": ["1 edited 30–45 second video","5 edited photos"],
+      "birthday_classic_line": "cake cutting, speeches, entrances",
+      "wedding_classic_line": "ceremony, speeches, cake cutting"
+    },
+    "hoursOnly_no_invented_deliverables": {
+      "naming_ceremony_bullet_spans_in_ssr": 0,
+      "naming_ceremony_contains_highlight_film": false,
+      "lifestyle_bullet_spans_in_ssr": 0,
+      "lifestyle_contains_highlight_film": false
+    },
+    "metadata": {
+      "home_title": "Flyboy Videography — Cinematic Event Films",
+      "services_title": "Services & Pricing | Flyboy Videography"
+    },
+    "navigation": {
+      "hero_services_cta_visible": true,
+      "hero_services_cta_navigates_to_services": true,
+      "nav_services_link_visible": true
+    },
+    "testids_visible_on_services": [
+      "tier-basic","tier-classic","tier-royale","tier-graduation",
+      "extra-50","extra-100","extra-200","booking-terms","services-enquire-cta"
+    ],
+    "regression": {
+      "cra_port_3000_auth_page_renders": true,
+      "backend_api_health": "{\"status\":\"ok\",\"database\":\"supabase\"}"
+    }
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/page.js correctly uses JSON.stringify for JSON-LD content (safe since data is static, no user input).",
+    "lib/pricing.js content matches client spec verbatim (en-dashes, prices, coverage hours) — good.",
+    "hoursOnly flag on Naming Ceremony & Lifestyle correctly hides the features/leadIn block in TierCard, honoring the client's explicit ban on invented deliverables.",
+    "Minor (non-blocking): pricing.js has no unit tests / snapshot; consider a tiny snapshot test to lock the spec against regressions."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped, only /api/health smoke)", "frontend": "100%"},
+  "test_credentials": "N/A — public static content page. Portal not logged into per instructions.",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Next.js public site is at /app/website on :3001. Content source is /app/website/lib/pricing.js. hoursOnly:true tiers must never render feature bullets. CRA portal remains at /app/frontend on :3000 (untouched). Backend /api/health returns ok with supabase."
+}
