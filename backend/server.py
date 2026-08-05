@@ -467,11 +467,14 @@ def admin_purge_seed_data(body: PurgeBody, admin=Depends(require_admin)):
         deleted[t] = len(r.data or [])
 
     removed_clients = 0
+    auth_users_deleted = []
+    auth_users_failed = []
     for c in deletable:
         try:
             sb.auth.admin.delete_user(c["user_id"])
-        except Exception:
-            pass
+            auth_users_deleted.append({"email": c["email"], "user_id": c["user_id"]})
+        except Exception as e:
+            auth_users_failed.append({"email": c["email"], "user_id": c["user_id"], "error": str(e)})
         sb.table("clients").delete().eq("id", c["id"]).execute()
         removed_clients += 1
     deleted["clients"] = removed_clients
@@ -479,6 +482,8 @@ def admin_purge_seed_data(body: PurgeBody, admin=Depends(require_admin)):
     return {
         "purged": True,
         "deleted": deleted,
+        "auth_users_deleted": auth_users_deleted,
+        "auth_users_failed_review_manually": auth_users_failed,
         "skipped_admin_accounts": skipped_admins,
         "skipped_clients_with_real_records": skipped_records,
         "audit_log": "erasure_audit_log preserved (compliance record)",

@@ -106,6 +106,10 @@ export default function Admin() {
       const { data } = await api.post("/admin/purge-seed-data", { confirmation: "PURGE" });
       const d = data.deleted;
       toast.success(`Purged: ${d.clients} clients, ${d.bookings} bookings, ${d.deliverables} deliverables, ${d.invoices} invoices, ${d.review_threads} comments, ${d.retainer_subscriptions} retainers`);
+      toast.info(`Auth accounts deleted: ${data.auth_users_deleted?.map((u) => u.email).join(", ") || "none"}`);
+      if (data.auth_users_failed_review_manually?.length) {
+        toast.warning(`Auth deletion FAILED for (review manually): ${data.auth_users_failed_review_manually.map((u) => u.email).join(", ")}`);
+      }
       if (data.skipped_admin_accounts?.length) toast.info(`Kept admin accounts: ${data.skipped_admin_accounts.join(", ")}`);
       setSelected("");
       const res = await api.get("/admin/clients");
@@ -245,7 +249,14 @@ export default function Admin() {
               <div key={d.id} className={`flex items-center justify-between gap-4 px-6 py-4 ${i > 0 ? "border-t border-line" : ""}`} data-testid={`admin-deliv-row-${i}`}>
                 <div>
                   <p className="font-semibold">{d.title}</p>
-                  <p className="font-mono text-xs text-zinc-500">v{d.version} · revisions {d.revision_rounds_used ?? 0}/{d.included_revision_rounds ?? 0}</p>
+                  <p className="font-mono text-xs text-zinc-500">
+                    v{d.version} · revisions {d.revision_rounds_used ?? 0}/{d.included_revision_rounds ?? 0}
+                    {(d.revision_rounds_used ?? 0) > (d.included_revision_rounds ?? 0) && (
+                      <span data-testid={`admin-extra-rounds-badge-${i}`} className="ml-2 rounded bg-warn/15 px-2 py-0.5 font-bold uppercase tracking-widest text-warn">
+                        {(d.revision_rounds_used ?? 0) - (d.included_revision_rounds ?? 0)} extra round{(d.revision_rounds_used ?? 0) - (d.included_revision_rounds ?? 0) > 1 ? "s" : ""} — billable
+                      </span>
+                    )}
+                  </p>
                 </div>
                 <div className="flex items-center gap-4">
                   <StatusPill status={d.status} />

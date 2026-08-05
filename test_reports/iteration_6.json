@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 6: EXECUTED THE REAL DESTRUCTIVE PURGE via the UI as user approved. Logged into /auth as admin (flyboy.admin.demo@gmail.com / AdminStudio#2026), navigated to /admin, installed a page.on('dialog') handler that accepts window.prompt with 'PURGE', clicked [data-testid=purge-seed-btn]. Dialog fired (type=prompt, message begins 'DESTRUCTIVE: this permanently deletes every record tagged is_seed_data...'), accepted with 'PURGE'. Backend POST /api/admin/purge-seed-data returned HTTP 200 with the full JSON captured below. Pre-purge Supabase counts (is_seed_data=eq.true) exactly matched staging spec: clients=3, bookings=4, retainer_subscriptions=1, deliverables=3, review_threads=5, invoices=5; auth users pre = [purgetest.one, purgetest.two, demo.client.frameform, flyboy.admin.demo]. Post-purge Supabase re-query: is_seed_data=eq.true count in ALL 6 tables = 0. GoTrue GET /auth/v1/admin/users now returns ONLY ['flyboy.admin.demo@gmail.com'] — purgetest.one, purgetest.two, AND demo.client.frameform@gmail.com auth accounts are DELETED (no orphans). REST /clients selects only [{email: flyboy.admin.demo@gmail.com, role: admin, is_seed_data: false}] — admin row intact. erasure_audit_log row count = 3 (untouched, all 3 preserved entries visible in UI Erasure audit log section: erased-576baf05, erased-11048b78 BACKFILLED, erased-1c1be3fb). Post-purge UI admin-client-select options = ['Select a client…', 'Studio Admin (admin)'] — demo client gone. Login attempt as demo.client.frameform@gmail.com / DemoClient#2026 against GoTrue /token?grant_type=password returned 400 invalid_credentials (auth user deleted, not orphaned). No recreation performed — main agent will re-seed the demo client with proof.",
+  "purge_api_response_json": {
+    "purged": true,
+    "deleted": {"review_threads": 5, "deliverables": 3, "invoices": 5, "retainer_subscriptions": 1, "bookings": 4, "clients": 3},
+    "auth_users_deleted": [
+      {"email": "demo.client.frameform@gmail.com", "user_id": "94300ecf-09a2-4fba-8802-7e65fc262854"},
+      {"email": "purgetest.one@seed.flyboytest.com", "user_id": "d652d3a6-d8f5-4b8b-bbeb-25e04fb119da"},
+      {"email": "purgetest.two@seed.flyboytest.com", "user_id": "59e5ade6-8a4d-4f9f-8e4d-5ca738b9bff8"}
+    ],
+    "auth_users_failed_review_manually": [],
+    "skipped_admin_accounts": [],
+    "skipped_clients_with_real_records": [],
+    "audit_log": "erasure_audit_log preserved (compliance record)"
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [],
+  "action_items": [
+    "Re-seed the demo client (demo.client.frameform@gmail.com / DemoClient#2026) via GoTrue admin API + insert clients row + seed bookings/deliverables/invoices tagged is_seed_data=true, then show fresh state as user requested.",
+    "Update /app/memory/test_credentials.md — demo client auth user is currently GONE, current DB state = 1 client (admin only), 0 seed rows across all 6 tables, erasure_audit_log still 3 entries."
+  ],
+  "critical_code_review_comments": [
+    "server.py admin_purge_seed_data does 6 separate DELETE round-trips against Supabase without wrapping in a transaction. If any deliverables/invoices delete fails mid-flight, you're left with orphan review_threads / partial state and no rollback. Consider a Postgres RPC (`purge_seed_data()`) that runs in a single transaction with FK CASCADE.",
+    "auth deletion loop calls sb.auth.admin.delete_user() then sb.table('clients').delete().eq('id', c['id']) in sequence per client — no batching, no retry. For 3 clients this is fine, but at scale (say 1000 tagged clients) that's 2000+ round-trips. Batch the clients delete after the auth loop, or use RPC.",
+    "Order of deletion inside the loop is: auth delete → clients row delete. If auth deletion succeeds but the subsequent clients delete fails (network blip), you get an orphaned clients row pointing at a deleted user_id — recovery is manual. Swap the order (delete clients row first) or wrap in try/except that re-queues.",
+    "auth_users_failed_review_manually is returned but the clients row is STILL deleted even when the auth deletion errored (line 478 runs unconditionally after the try/except). This is the opposite of what the field name implies — the caller would assume 'review manually' means the record was preserved. Either preserve the clients row on auth-delete failure, or rename the field to auth_delete_errors_but_record_still_deleted.",
+    "Admin.js purgeSeed relies on window.prompt — this is blocked/coerced-to-null in some enterprise browsers and can't be styled. Consider a proper confirmation modal with a typed input for parity with the rest of the shadcn UI (and it would be easier to e2e-test without the fragile page.on('dialog') hack)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (purge endpoint returned expected shape and counts)", "frontend": "100% (UI dialog → purge → toasts → admin-client-select re-render all verified)"},
+  "test_credentials": "Admin flyboy.admin.demo@gmail.com / AdminStudio#2026 SURVIVES. Demo client demo.client.frameform@gmail.com / DemoClient#2026 has been DELETED by this run (auth account + clients row + all seed data). Login now returns 400 invalid_credentials.",
+  "seed_data_creation": "None — this run was purely destructive as requested. Main agent to re-seed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Post-purge DB state: 1 clients row (admin, is_seed_data=false), 0 rows tagged is_seed_data=true in bookings/deliverables/invoices/retainer_subscriptions/review_threads. erasure_audit_log unchanged at 3 rows. GoTrue has exactly 1 user (admin). Until main agent re-seeds the demo client, any test relying on demo.client.frameform@gmail.com will fail auth and any test relying on seeded bookings/deliverables/invoices will find zero rows.",
+  "rca of the issue": "N/A — this iteration was an intentional end-to-end destructive run explicitly approved by the user. Everything worked as designed."
+}
