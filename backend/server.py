@@ -1,7 +1,7 @@
 import os
 import random
 import secrets
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -31,6 +31,15 @@ app.add_middleware(
 bearer = HTTPBearer(auto_error=False)
 
 SCHEMA_HINT = "Supabase tables not found. Run /app/supabase_schema.sql in your Supabase SQL Editor."
+
+
+def sweep_overdue_invoices():
+    try:
+        sb.table("invoices").update({"status": "overdue"}).eq("status", "sent").lt(
+            "due_on", date.today().isoformat()
+        ).execute()
+    except Exception:
+        pass
 
 
 def is_schema_error(exc: Exception) -> bool:
@@ -79,6 +88,7 @@ def health():
 
 @app.post("/api/clients/ensure")
 def ensure_client(body: EnsureBody, user=Depends(get_auth_user)):
+    sweep_overdue_invoices()
     client = get_client_row(user)
     role = "admin" if (user.email or "").lower() in ADMIN_EMAILS else "client"
     if client:
@@ -114,6 +124,27 @@ def me(user=Depends(get_auth_user)):
     if not client:
         raise HTTPException(404, "Client profile not found")
     return client
+
+
+@app.post("/api/deliverables/{deliverable_id}/approve")
+def approve_deliverable(deliverable_id: str, user=Depends(get_auth_user)):
+    """One-tap client approval. Service-role write, strictly scoped to the caller's own deliverable."""
+    client = get_client_row(user)
+    if not client:
+        raise HTTPException(404, "Client profile not found")
+    r = sb.table("deliverables").select("*").eq("id", deliverable_id).execute()
+    if not r.data:
+        raise HTTPException(404, "Deliverable not found")
+    d = r.data[0]
+    if d["client_id"] != client["id"] and client["role"] != "admin":
+        raise HTTPException(403, "Not your deliverable")
+    if d["status"] not in ("in_review", "revisions_requested"):
+        raise HTTPException(409, f"Cannot approve a deliverable in status '{d['status']}'")
+    updated = sb.table("deliverables").update({
+        "status": "approved",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", deliverable_id).execute().data[0]
+    return updated
 
 
 @app.post("/api/demo/seed")
@@ -189,6 +220,7 @@ def admin_clients(admin=Depends(require_admin)):
 
 @app.get("/api/admin/overview")
 def admin_overview(admin=Depends(require_admin)):
+    sweep_overdue_invoices()
     out = {}
     for t in ["clients", "bookings", "retainer_subscriptions", "deliverables", "invoices"]:
         out[t] = sb.table(t).select("id", count="exact").execute().count

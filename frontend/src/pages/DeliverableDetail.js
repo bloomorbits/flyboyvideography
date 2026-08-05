@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, CheckCircle2, Circle, Download } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Circle, Download, ThumbsUp } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Btn, Card, Input, Label, SourceBadge, StatusPill, fmtDate, parseTimecode, secondsToTimecode } from "../components/ui";
 
@@ -13,6 +14,7 @@ export default function DeliverableDetail() {
   const [comments, setComments] = useState([]);
   const [form, setForm] = useState({ timecode: "", comment: "" });
   const [busy, setBusy] = useState(false);
+  const [approving, setApproving] = useState(false);
 
   const load = useCallback(async () => {
     const [{ data: d }, { data: c }] = await Promise.all([
@@ -52,6 +54,19 @@ export default function DeliverableDetail() {
     load();
   };
 
+  const approveCut = async () => {
+    setApproving(true);
+    try {
+      await api.post(`/deliverables/${id}/approve`);
+      toast.success("Cut approved — your editor has been notified in the portal");
+      await load();
+    } catch (err) {
+      toast.error(typeof err.response?.data?.detail === "string" ? err.response.data.detail : "Approval failed");
+    } finally {
+      setApproving(false);
+    }
+  };
+
   if (!deliv) return <p className="font-mono text-xs uppercase tracking-[0.3em] text-zinc-500">Loading…</p>;
 
   return (
@@ -68,7 +83,16 @@ export default function DeliverableDetail() {
           </div>
           <h1 className="font-display text-4xl font-bold tracking-tighter">{deliv.title}</h1>
         </div>
-        <StatusPill status={deliv.status} testId="deliverable-status" />
+        <div className="flex items-center gap-4">
+          {["in_review", "revisions_requested"].includes(deliv.status) && (
+            <Btn data-testid="approve-cut-btn" onClick={approveCut} disabled={approving}>
+              <span className="flex items-center gap-2">
+                <ThumbsUp size={15} /> {approving ? "Approving…" : "Approve this cut"}
+              </span>
+            </Btn>
+          )}
+          <StatusPill status={deliv.status} testId="deliverable-status" />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-3">

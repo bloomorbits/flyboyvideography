@@ -27,6 +27,7 @@ create table if not exists public.clients (
   full_name text,
   company text,
   role text not null default 'client' check (role in ('client','admin')),
+  phone text,
   is_seed_data boolean not null default false,
   created_at timestamptz not null default now()
 );

@@ -9,6 +9,7 @@ import Retainers from "./pages/Retainers";
 import Deliverables from "./pages/Deliverables";
 import DeliverableDetail from "./pages/DeliverableDetail";
 import Invoices from "./pages/Invoices";
+import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
 
 function Protected({ children }) {
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="/deliverables" element={<Deliverables />} />
             <Route path="/deliverables/:id" element={<DeliverableDetail />} />
             <Route path="/invoices" element={<Invoices />} />
+            <Route path="/profile" element={<Profile />} />
             <Route path="/admin" element={<Admin />} />
           </Route>
         </Routes>

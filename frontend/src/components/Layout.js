@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, Clapperboard, Repeat, Film, Receipt, ShieldCheck, LogOut, AlertTriangle } from "lucide-react";
+import { LayoutDashboard, Clapperboard, Repeat, Film, Receipt, ShieldCheck, LogOut, AlertTriangle, UserRound } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const links = [
@@ -8,6 +8,7 @@ const links = [
   { to: "/retainers", label: "Retainers", icon: Repeat, id: "nav-retainers" },
   { to: "/deliverables", label: "Deliverables", icon: Film, id: "nav-deliverables" },
   { to: "/invoices", label: "Invoices", icon: Receipt, id: "nav-invoices" },
+  { to: "/profile", label: "Profile", icon: UserRound, id: "nav-profile" },
 ];
 
 export default function Layout() {
