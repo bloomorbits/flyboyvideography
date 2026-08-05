@@ -27,6 +27,7 @@ create table if not exists public.clients (
   full_name text,
   company text,
   role text not null default 'client' check (role in ('client','admin')),
+  is_seed_data boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -41,6 +42,7 @@ create table if not exists public.bookings (
     check (status in ('inquiry','confirmed','shot','in_post','delivered','cancelled')),
   budget numeric(10,2),
   notes text,
+  is_seed_data boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -53,6 +55,7 @@ create table if not exists public.retainer_subscriptions (
   status text not null default 'active' check (status in ('active','paused','cancelled')),
   started_on date default current_date,
   renews_on date,
+  is_seed_data boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -68,6 +71,7 @@ create table if not exists public.deliverables (
   video_url text,
   final_file_url text,
   notes text,
+  is_seed_data boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -83,6 +87,7 @@ create table if not exists public.review_threads (
   timestamp_seconds numeric(8,2),
   comment text not null,
   resolved boolean not null default false,
+  is_seed_data boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -101,6 +106,7 @@ create table if not exists public.invoices (
   status text not null default 'draft' check (status in ('draft','sent','paid','overdue','void')),
   issued_on date default current_date,
   due_on date,
+  is_seed_data boolean not null default false,
   created_at timestamptz not null default now(),
   -- an invoice belongs to EXACTLY one of: a booking, or a subscription
   constraint invoice_exactly_one_source check (
@@ -208,3 +214,25 @@ create policy invoices_select on public.invoices for select
 drop policy if exists invoices_write on public.invoices;
 create policy invoices_write on public.invoices for all
   using (public.is_admin()) with check (public.is_admin());
+
+-- ---------- ERASURE AUDIT LOG (GDPR compliance record) ----------
+-- No FK to clients: the log must stand on its own. Admins may read;
+-- nobody may write via the anon key — rows are inserted only by the
+-- backend using the service_role key (append-only from the client side).
+create table if not exists public.erasure_audit_log (
+  id uuid primary key default gen_random_uuid(),
+  erased_client_id uuid not null,
+  erased_client_previous_role text,
+  anonymized_email text not null,
+  performed_by_client_id uuid,
+  performed_by_email text,
+  bookings_preserved integer not null default 0,
+  deliverables_preserved integer not null default 0,
+  invoices_preserved integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table public.erasure_audit_log enable row level security;
+drop policy if exists erasure_audit_select on public.erasure_audit_log;
+create policy erasure_audit_select on public.erasure_audit_log for select
+  using (public.is_admin());

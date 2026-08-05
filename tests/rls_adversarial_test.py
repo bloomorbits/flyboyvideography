@@ -44,16 +44,19 @@ def setup_client(email, name):
     prof = httpx.post(f"{BACKEND}/clients/ensure", headers={"Authorization": f"Bearer {jwt}"},
                       json={"full_name": name, "company": "SEED_TEST_DATA"}).json()
     cid = prof["id"]
+    httpx.patch(f"{URL}/rest/v1/clients?id=eq.{cid}", headers=svc, json={"is_seed_data": True})
     # booking created AS the client (anon key + own JWT — RLS insert policy)
     b = httpx.post(f"{URL}/rest/v1/bookings", headers={**anon_headers(jwt), "Prefer": "return=representation"},
-                   json={"client_id": cid, "title": f"{name} Seed Shoot", "status": "confirmed"}).json()[0]
+                   json={"client_id": cid, "title": f"{name} Seed Shoot", "status": "confirmed",
+                         "is_seed_data": True}).json()[0]
     # deliverable + invoice are admin-only writes by design → created via service key (setup only)
     d = httpx.post(f"{URL}/rest/v1/deliverables", headers={**svc, "Prefer": "return=representation"},
                    json={"client_id": cid, "booking_id": b["id"], "title": f"{name} Seed Cut v1",
-                         "status": "in_review"}).json()[0]
+                         "status": "in_review", "is_seed_data": True}).json()[0]
     inv = httpx.post(f"{URL}/rest/v1/invoices", headers={**svc, "Prefer": "return=representation"},
                      json={"client_id": cid, "booking_id": b["id"], "source_type": "booking",
-                           "invoice_number": f"INV-SEED-{cid[:8]}", "amount": 100, "status": "sent"}).json()[0]
+                           "invoice_number": f"INV-SEED-{cid[:8]}", "amount": 100, "status": "sent",
+                           "is_seed_data": True}).json()[0]
     return {"name": name, "email": email, "jwt": jwt, "client_id": cid,
             "booking_id": b["id"], "deliverable_id": d["id"], "invoice_id": inv["id"]}
 

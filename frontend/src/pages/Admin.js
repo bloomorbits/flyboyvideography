@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { supabase } from "../lib/supabase";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { Btn, Card, Input, Label, PageHeader, StatusPill } from "../components/ui";
+import { Btn, Card, Input, Label, PageHeader, StatusPill, fmtDate } from "../components/ui";
 
 const DELIV_STATUSES = ["draft", "in_review", "revisions_requested", "approved", "final_delivered"];
 
@@ -19,13 +19,19 @@ export default function Admin() {
   const [delivs, setDelivs] = useState([]);
   const [tab, setTab] = useState("deliverable");
   const [form, setForm] = useState({});
+  const [audit, setAudit] = useState([]);
 
   const isAdmin = profile?.role === "admin";
+
+  const loadAudit = useCallback(() => {
+    api.get("/admin/erasure-audit").then(({ data }) => setAudit(data)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!isAdmin) return;
     api.get("/admin/clients").then(({ data }) => setClients(data)).catch(() => toast.error("Failed to load clients"));
-  }, [isAdmin]);
+    loadAudit();
+  }, [isAdmin, loadAudit]);
 
   const loadClientData = useCallback(async (cid) => {
     if (!cid) return;
@@ -81,9 +87,10 @@ export default function Admin() {
     if (!window.confirm(`GDPR-erase ${c?.full_name || c?.email}? Personal data (name, email, contact) is anonymized and their login disabled. Bookings, deliverables and invoices are preserved as financial records. This cannot be undone.`)) return;
     try {
       const { data } = await api.post(`/admin/clients/${selected}/erase`);
-      toast.success(`Erased. Records preserved: ${data.preserved}`);
+      toast.success(`Erased. Preserved: ${data.preserved.bookings} bookings, ${data.preserved.deliverables} deliverables, ${data.preserved.invoices} invoices`);
       const res = await api.get("/admin/clients");
       setClients(res.data);
+      loadAudit();
     } catch (err) {
       toast.error(typeof err.response?.data?.detail === "string" ? err.response.data.detail : "Erase failed");
     }
@@ -235,6 +242,27 @@ export default function Admin() {
           </Card>
         </>
       )}
+
+      <div className="mt-12">
+        <h2 className="mb-4 font-display text-2xl font-semibold tracking-tight">Erasure audit log</h2>
+        <Card data-testid="erasure-audit-log">
+          {audit.length === 0 && <p className="p-6 text-sm text-zinc-500">No erasures recorded.</p>}
+          {audit.map((a, i) => (
+            <div key={a.id} className={`px-6 py-4 ${i > 0 ? "border-t border-line" : ""}`} data-testid={`audit-entry-${i}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-mono text-sm font-bold text-warn">{a.anonymized_email}</p>
+                <p className="font-mono text-xs text-zinc-500">{fmtDate(a.created_at?.slice(0, 10))}</p>
+              </div>
+              <p className="mt-1 text-sm text-zinc-400">
+                Erased by <span className="text-zinc-200">{a.performed_by_email}</span> · client id <span className="font-mono text-xs">{a.erased_client_id}</span>
+              </p>
+              <p className="mt-1 font-mono text-xs text-zinc-500">
+                preserved: {a.bookings_preserved} bookings · {a.deliverables_preserved} deliverables · {a.invoices_preserved} invoices
+              </p>
+            </div>
+          ))}
+        </Card>
+      </div>
     </div>
   );
 }

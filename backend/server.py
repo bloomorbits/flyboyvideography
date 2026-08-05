@@ -134,46 +134,47 @@ def seed_demo(user=Depends(get_auth_user)):
          "status": "confirmed", "budget": 8500, "notes": "Two-day shoot, drone unit on day 2."},
         {"client_id": cid, "title": "Product Teaser — Q3 Drop", "shoot_type": "Product",
          "shoot_date": str(today - timedelta(days=20)), "location": "White Cyc Stage",
-         "status": "in_post", "budget": 4200, "notes": "Macro pass complete, awaiting color."},
+         "status": "in_post", "budget": 4200, "notes": "Macro pass complete, awaiting color.", "is_seed_data": True},
     ]).execute().data
 
     sub = sb.table("retainer_subscriptions").insert({
         "client_id": cid, "package_name": "Growth Retainer", "monthly_price": 3500,
         "videos_per_month": 4, "status": "active",
         "started_on": str(today - timedelta(days=90)), "renews_on": str(today + timedelta(days=8)),
+        "is_seed_data": True,
     }).execute().data[0]
 
     delivs = sb.table("deliverables").insert([
         {"client_id": cid, "booking_id": bookings[1]["id"], "title": "Q3 Teaser — Cut v2",
          "version": 2, "status": "in_review",
-         "video_url": "https://player.vimeo.com/video/76979871", "notes": "Color pass applied."},
+         "video_url": "https://player.vimeo.com/video/76979871", "notes": "Color pass applied.", "is_seed_data": True},
         {"client_id": cid, "subscription_id": sub["id"], "title": "June Social Edit #3",
          "version": 1, "status": "revisions_requested",
-         "video_url": "https://player.vimeo.com/video/76979871", "notes": "Vertical crop 9:16."},
+         "video_url": "https://player.vimeo.com/video/76979871", "notes": "Vertical crop 9:16.", "is_seed_data": True},
         {"client_id": cid, "subscription_id": sub["id"], "title": "May Recap Reel",
          "version": 3, "status": "final_delivered",
          "video_url": "https://player.vimeo.com/video/76979871",
-         "final_file_url": "https://example.com/final/may-recap-4k.mp4"},
+         "final_file_url": "https://example.com/final/may-recap-4k.mp4", "is_seed_data": True},
     ]).execute().data
 
     sb.table("review_threads").insert([
         {"deliverable_id": delivs[0]["id"], "client_id": cid, "author_user_id": user.id,
          "author_name": client.get("full_name") or client["email"], "author_role": client["role"],
          "version": 2, "timestamp_seconds": 14.5,
-         "comment": "Logo lands a beat too early — push it back ~10 frames.", "resolved": False},
+         "comment": "Logo lands a beat too early — push it back ~10 frames.", "resolved": False, "is_seed_data": True},
         {"deliverable_id": delivs[0]["id"], "client_id": cid, "author_user_id": user.id,
          "author_name": client.get("full_name") or client["email"], "author_role": client["role"],
          "version": 2, "timestamp_seconds": 42.0,
-         "comment": "Love this transition. Keep exactly as is.", "resolved": True},
+         "comment": "Love this transition. Keep exactly as is.", "resolved": True, "is_seed_data": True},
     ]).execute()
 
     sb.table("invoices").insert([
         {"client_id": cid, "booking_id": bookings[0]["id"], "source_type": "booking",
          "invoice_number": f"INV-B-{suffix}", "amount": 4250, "status": "sent",
-         "issued_on": str(today - timedelta(days=3)), "due_on": str(today + timedelta(days=11))},
+         "issued_on": str(today - timedelta(days=3)), "due_on": str(today + timedelta(days=11)), "is_seed_data": True},
         {"client_id": cid, "subscription_id": sub["id"], "source_type": "subscription",
          "invoice_number": f"INV-R-{suffix}", "amount": 3500, "status": "paid",
-         "issued_on": str(today - timedelta(days=30)), "due_on": str(today - timedelta(days=16))},
+         "issued_on": str(today - timedelta(days=30)), "due_on": str(today - timedelta(days=16)), "is_seed_data": True},
     ]).execute()
 
     return {"seeded": True}
@@ -320,10 +321,30 @@ def admin_erase_client(client_id: str, admin=Depends(require_admin)):
         "full_name": "Erased Client", "email": anon_email, "company": None,
     }).eq("id", client_id).execute()
     sb.table("review_threads").update({"author_name": "Erased Client"}).eq("client_id", client_id).eq("author_role", "client").execute()
+    counts = {
+        t: sb.table(t).select("id", count="exact").eq("client_id", client_id).execute().count
+        for t in ["bookings", "deliverables", "invoices"]
+    }
+    sb.table("erasure_audit_log").insert({
+        "erased_client_id": client_id,
+        "erased_client_previous_role": client["role"],
+        "anonymized_email": anon_email,
+        "performed_by_client_id": admin["id"],
+        "performed_by_email": admin["email"],
+        "bookings_preserved": counts["bookings"],
+        "deliverables_preserved": counts["deliverables"],
+        "invoices_preserved": counts["invoices"],
+    }).execute()
     return {
         "erased": True,
         "client_id": client_id,
         "anonymized_email": anon_email,
-        "preserved": "bookings, deliverables, invoices and review thread contents retained (financial/business records)",
+        "preserved": counts,
         "auth_account": "email anonymized, password rotated, login banned",
+        "audit_logged": True,
     }
+
+
+@app.get("/api/admin/erasure-audit")
+def admin_erasure_audit(admin=Depends(require_admin)):
+    return sb.table("erasure_audit_log").select("*").order("created_at", desc=True).execute().data
