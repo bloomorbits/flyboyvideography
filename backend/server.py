@@ -368,6 +368,8 @@ def admin_patch_deliverable(deliverable_id: str, body: PatchBody, admin=Depends(
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(422, "Nothing to update")
+    if updates.get("status") and updates["status"] != "approved":
+        updates.update({"approved_by_user_id": None, "approved_by_name": None, "approved_at": None})
     r = sb.table("deliverables").update(updates).eq("id", deliverable_id).execute()
     if not r.data:
         raise HTTPException(404, "Deliverable not found")
