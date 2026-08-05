@@ -474,7 +474,9 @@ def admin_purge_seed_data(body: PurgeBody, admin=Depends(require_admin)):
             sb.auth.admin.delete_user(c["user_id"])
             auth_users_deleted.append({"email": c["email"], "user_id": c["user_id"]})
         except Exception as e:
+            # preserve the clients row so nothing is silently orphaned; retry via a later purge
             auth_users_failed.append({"email": c["email"], "user_id": c["user_id"], "error": str(e)})
+            continue
         sb.table("clients").delete().eq("id", c["id"]).execute()
         removed_clients += 1
     deleted["clients"] = removed_clients

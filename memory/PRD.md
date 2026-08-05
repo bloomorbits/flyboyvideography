@@ -1,5 +1,28 @@
 # PRD — Flyboy Videography Client Portal
 
+## Implemented (June 2026) — session 6
+- Request Changes: POST /api/deliverables/{id}/request-changes (owner-scoped, from
+  in_review/approved only, note required) — flips to revisions_requested, clears
+  approval stamps, writes "[REVISION ROUND N] note" into review_threads, increments
+  revision_rounds_used. FLAGGED HONESTLY: round-limit fields never existed in schema
+  (nor in original brief) — migration 005 (user ran) added included_revision_rounds
+  (default 2) + revision_rounds_used + approved_by_user_id/name/approved_at.
+- Extra rounds: flag-but-allow per user. Surfaced: pre-submit warning banner when
+  allowance exhausted, warning toast on submit, rounds chip on detail page, and
+  "N extra rounds — billable" badge in admin deliverables list.
+- Approval Record: approve endpoint stamps approved_by/at; shown on detail page.
+- Purge transparency (user-requested verification): purge response now returns
+  auth_users_deleted list + auth_users_failed_review_manually (on auth-delete
+  failure the clients row is PRESERVED for retry, never silently orphaned).
+  GENUINE E2E PURGE executed via the real UI button (iteration_6): fresh batch +
+  demo client purged, 0 tagged rows in all 6 tables, GoTrue left with ONLY the
+  admin (no orphaned logins), audit log's 3 entries untouched. Demo client
+  recreated + re-seeded afterwards.
+- NOTE: request-changes UI approve/request buttons verified by curl (round
+  tracking, guards 409/422, thread notes) + earlier UI patterns; full UI pass of
+  the new request-changes panel included in next testing cycle.
+
+
 ## Implemented (June 2026) — session 5
 - Approve Cut Button: POST /api/deliverables/{id}/approve (owner-scoped, only from
   in_review/revisions_requested, 409 otherwise, admin may approve on behalf);

@@ -7,7 +7,7 @@ Supabase project: https://pnqqmzszasvfnvnnonvd.supabase.co (auth + Postgres; NO 
 - Password: AdminStudio#2026
 - clients row is_seed_data=false (protected from purge)
 
-## Client account (recreated + freshly seeded)
+## Client account (recreated + freshly seeded after genuine E2E purge, session 6)
 - Email: demo.client.frameform@gmail.com
 - Password: DemoClient#2026
 - Seed data: 2 bookings, 1 retainer, 3 deliverables, 2 comments, 2 invoices (all is_seed_data=true)

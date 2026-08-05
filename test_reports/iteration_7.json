@@ -1,0 +1,27 @@
+{
+  "summary": "Iteration 7: E2E verification of Request-Changes + Approval-Record feature. Backend pytest (4/4 pass): 401 without token, 422 on empty note, 409 on final_delivered (May Recap), seed sanity. Frontend Playwright end-to-end (all 7 steps pass): Q3 Teaser opened fresh 0/2 → request changes round 1 with timecode 00:10 → toast 'round 1 of 2 included' → chip 1/2, status REVISIONS REQUESTED, request-changes-btn hidden, approve-cut-btn visible → approve → status APPROVED with approval-record 'Approved by Demo Client · Aug 5, 2026', request-changes-btn reappears → round 2 → chip 2/2 amber (bg-warn/15 text-warn), toast 'round 2 of 2 included' → approve again → open request-changes 3rd time → extra-round-warning banner IS visible ('Heads up: all 2 included revision rounds are used...') → submit → WARNING toast 'Revision round 3 exceeds the 2 included rounds — this round may be billed as an extra' → chip 3/2. Admin view: demo client selected, Q3 Teaser row shows 'revisions 3/2' with admin-extra-rounds-badge-0 reading '1 extra round — billable'. admin-deliv-rounds input present; created 'TEST_Rounds Deliverable' linked to a booking with rounds=1, row shows 'revisions 0/1'. Newly-created row tagged is_seed_data=true via service key for cleanup.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_revision_rounds.py",
+    "/app/test_reports/pytest/rev_rounds.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "DeliverableDetail.js request-changes-btn is visible for statuses in_review AND approved but not for revisions_requested — correct per spec. However there is no visible feedback about *why* the button disappears mid-flow; a small caption 'awaiting new cut from studio' next to the chip while status=revisions_requested would improve UX.",
+    "The approve endpoint clears approved_by_* on request_changes (good) but sets approved_at=None only on request_changes — if an admin manually PATCHes status back to in_review via /api/admin/deliverables/{id}, approved_by fields are not cleared, so a stale 'Approved by X' banner could appear. Consider centralising the reset in a DB trigger on status change.",
+    "server.py request_changes uses (d.get('revision_rounds_used') or 0) + 1 which is safe, but the underlying column has default 2 (per problem statement 'included_revision_rounds default 2') — verify revision_rounds_used default is 0 (confirmed via seed check: all 0). OK.",
+    "Frontend chip amber styling triggers at roundsUsed >= roundsIncluded which correctly flips at 2/2 and 3/2. Chip becomes red-adjacent (warn tone) but there's no strictly 'over-budget' variant to distinguish 3/2 vs 2/2 visually. Consider a separate 'exceeded' color once used>included.",
+    "Sonner toast for extra round uses toast.warning which renders as yellow — visually identical to chip color; consider toast.error for stronger signal on billable rounds."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_revision_rounds.py (new)"
+  ],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "100% (7/7 steps)"},
+  "test_credentials": "Admin flyboy.admin.demo@gmail.com / AdminStudio#2026; Client demo.client.frameform@gmail.com / DemoClient#2026. Both work.",
+  "seed_data_creation": "Created 'TEST_Rounds Deliverable' (booking-linked, included_revision_rounds=1) via /api/admin/deliverables, then tagged is_seed_data=true via service key so it will be caught by the next purge. Q3 Teaser was left at status=revisions_requested with 3/2 rounds (as user allowed — good demo of billable badge).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Post-run DB state: Q3 Teaser status=revisions_requested, revision_rounds_used=3, included_revision_rounds=2 (extra-rounds-badge showing '1 extra round — billable' in admin). TEST_Rounds Deliverable exists (booking-linked, in_review, 0/1, is_seed_data=true). June Social (revisions_requested 0/2) and May Recap (final_delivered 0/2) untouched. erasure_audit_log still 3 entries. Everything confirmed working end-to-end.",
+  "rca of the issue": "N/A — feature verified working."
+}
