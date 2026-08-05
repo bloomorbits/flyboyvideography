@@ -133,6 +133,7 @@ export default function DeliverableDetail() {
                       )}
                       <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">v{c.version}</span>
                     </div>
+                    {(profile?.role === "admin" || profile?.user_id === c.author_user_id) && (
                     <button
                       data-testid={`comment-resolve-btn-${i}`}
                       onClick={() => toggleResolved(c)}
@@ -142,6 +143,7 @@ export default function DeliverableDetail() {
                       {c.resolved ? <CheckCircle2 size={14} /> : <Circle size={14} />}
                       {c.resolved ? "Resolved" : "Resolve"}
                     </button>
+                    )}
                   </div>
                   <p className="mt-2 text-sm text-zinc-200">{c.comment}</p>
                   <p className="mt-2 text-xs text-zinc-500">

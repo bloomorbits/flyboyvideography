@@ -1,5 +1,5 @@
 -- ============================================================
--- FRAME & FORM — Client Portal Schema for Supabase
+-- FLYBOY VIDEOGRAPHY — Client Portal Schema for Supabase
 -- Run this ONCE in: Supabase Dashboard → SQL Editor → New query
 -- Creates all tables + Row Level Security in the same script.
 --
@@ -88,13 +88,16 @@ create table if not exists public.review_threads (
 
 create table if not exists public.invoices (
   id uuid primary key default gen_random_uuid(),
-  client_id uuid not null references public.clients(id) on delete cascade,
+  -- ON DELETE RESTRICT: financial records must survive client deletion
+  -- (UK record-keeping obligations; GDPR Art. 17(3) exception). Erasure
+  -- requests should anonymize the client row, never cascade-delete invoices.
+  client_id uuid not null references public.clients(id) on delete restrict,
   booking_id uuid references public.bookings(id) on delete set null,
   subscription_id uuid references public.retainer_subscriptions(id) on delete set null,
   source_type text not null check (source_type in ('booking','subscription')),
   invoice_number text not null unique,
   amount numeric(10,2) not null,
-  currency text not null default 'USD',
+  currency text not null default 'GBP',
   status text not null default 'draft' check (status in ('draft','sent','paid','overdue','void')),
   issued_on date default current_date,
   due_on date,
@@ -189,9 +192,11 @@ create policy review_insert on public.review_threads for insert
     or public.is_admin()
   );
 drop policy if exists review_update on public.review_threads;
+-- clients may only update comments THEY authored (e.g. resolve toggle);
+-- checks author_user_id, not client_id, so clients can never edit admin comments
 create policy review_update on public.review_threads for update
-  using (client_id = public.current_client_id() or public.is_admin())
-  with check (client_id = public.current_client_id() or public.is_admin());
+  using (author_user_id = auth.uid() or public.is_admin())
+  with check (author_user_id = auth.uid() or public.is_admin());
 drop policy if exists review_delete on public.review_threads;
 create policy review_delete on public.review_threads for delete
   using (author_user_id = auth.uid() or public.is_admin());

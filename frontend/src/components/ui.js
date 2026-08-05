@@ -1,5 +1,5 @@
-export const fmtMoney = (n, cur = "USD") =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(n || 0);
+export const fmtMoney = (n, cur = "GBP") =>
+  new Intl.NumberFormat("en-GB", { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(n || 0);
 
 export const fmtDate = (d) =>
   d ? new Date(d + (d.length === 10 ? "T00:00:00" : "")).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";

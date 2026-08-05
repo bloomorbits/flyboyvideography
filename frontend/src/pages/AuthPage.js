@@ -59,7 +59,7 @@ export default function AuthPage() {
       <div className="flex w-full items-center justify-center px-8 lg:w-[520px]">
         <div className="rise w-full max-w-sm">
           <p className="font-display text-2xl font-extrabold tracking-tighter">
-            FRAME<span className="text-accent">&</span>FORM
+            FLYBOY<span className="text-accent">/</span>VIDEO
           </p>
           <h1 className="mt-8 font-display text-3xl font-bold tracking-tight">
             {mode === "login" ? "Sign in to your portal" : "Create your account"}

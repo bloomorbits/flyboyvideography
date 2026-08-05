@@ -19,7 +19,7 @@ export default function Layout() {
       <aside className="fixed inset-y-0 left-0 z-20 flex w-60 flex-col border-r border-line bg-surface">
         <div className="border-b border-line px-6 py-7">
           <p className="font-display text-xl font-extrabold tracking-tighter">
-            FRAME<span className="text-accent">&</span>FORM
+            FLYBOY<span className="text-accent">/</span>VIDEO
           </p>
           <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.3em] text-zinc-500">Client Portal</p>
         </div>
