@@ -108,7 +108,7 @@ export default function Admin() {
             </Btn>
           )}
         </div>
-        {selected && clients.find((x) => x.id === selected)?.email?.startsWith("erased-") && (
+        {selected && clients.find((x) => x.id === selected)?.email?.endsWith("@anonymized.invalid") && (
           <p className="mt-3 font-mono text-xs text-warn" data-testid="erased-client-note">
             This client has been GDPR-erased: personal data anonymized, login disabled, financial records retained.
           </p>

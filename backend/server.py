@@ -303,14 +303,10 @@ def admin_erase_client(client_id: str, admin=Depends(require_admin)):
     client = r.data[0]
     if client["role"] == "admin":
         raise HTTPException(400, "Cannot erase an admin account")
-    if client["email"].startswith("erased-"):
+    if client["email"].endswith("@anonymized.invalid"):
         raise HTTPException(409, "Client already erased")
 
     anon_email = f"erased-{client_id[:8]}@anonymized.invalid"
-    sb.table("clients").update({
-        "full_name": "Erased Client", "email": anon_email, "company": None,
-    }).eq("id", client_id).execute()
-    sb.table("review_threads").update({"author_name": "Erased Client"}).eq("client_id", client_id).eq("author_role", "client").execute()
     try:
         sb.auth.admin.update_user_by_id(client["user_id"], {
             "email": anon_email,
@@ -319,7 +315,11 @@ def admin_erase_client(client_id: str, admin=Depends(require_admin)):
             "user_metadata": {"full_name": "Erased Client", "company": None},
         })
     except Exception as e:
-        raise HTTPException(500, f"Client row anonymized but auth account update failed: {e}")
+        raise HTTPException(500, f"Auth account update failed; no data was anonymized: {e}")
+    sb.table("clients").update({
+        "full_name": "Erased Client", "email": anon_email, "company": None,
+    }).eq("id", client_id).execute()
+    sb.table("review_threads").update({"author_name": "Erased Client"}).eq("client_id", client_id).eq("author_role", "client").execute()
     return {
         "erased": True,
         "client_id": client_id,

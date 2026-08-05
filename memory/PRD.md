@@ -30,6 +30,16 @@ clients, bookings, retainer_subscriptions, deliverables, review_threads, invoice
   update their own comments — fixed after user review, 2026-06).
 
 ## Implemented (June 2026)
+- Full schema + RLS SQL — RUN BY USER, tables live in Supabase.
+- Adversarial RLS test /app/tests/rls_adversarial_test.py — 16/16 passed both
+  directions (Client A/B seed accounts @seed.flyboytest.com, company=SEED_TEST_DATA;
+  note: schema has no is_seed_data column). Client B later GDPR-erased in testing.
+- GDPR Erasure Flow: POST /api/admin/clients/{id}/erase — auth account updated
+  FIRST (email anonymized, password rotated, 100y ban), then clients row +
+  review author names anonymized; bookings/deliverables/invoices preserved.
+  400 for admins, 409 if already erased (@anonymized.invalid check). Admin UI
+  "GDPR erase" button (admin-erase-client-btn) with confirm.
+- Demo seed fixed (review_threads bulk insert needed explicit resolved:false).
 - Full schema + RLS SQL file (user-reviewed, 3 fixes applied: review_update policy,
   GBP default, invoice delete restrict; renamed Frame&Form → Flyboy Videography).
 - Auth: email/password via Supabase Auth; login/signup page.
@@ -42,8 +52,13 @@ clients, bookings, retainer_subscriptions, deliverables, review_threads, invoice
 - Graceful "schema not run yet" handling (503 + frontend banner).
 
 ## Pending / blocked on user
-- User must run /app/supabase_schema.sql in Supabase SQL Editor (not done as of last session).
-- Email confirmation still enabled in Supabase project (user said they'd disable).
+- Stripe invoicing + email alerts (Resend) ON HOLD until user sets up accounts.
+- Email confirmation still enabled in Supabase project.
+
+## Seed/test accounts state
+- Client A client.a@seed.flyboytest.com / SeedTest#2026! — intact (control).
+- Client B client.b@seed.flyboytest.com — GDPR-ERASED (login disabled, email now erased-*@anonymized.invalid).
+- Demo client has 1 TEST_ Playwright booking + 1 TEST_ comment (harmless leftovers).
 
 ## Backlog
 - P1: Stripe payments/webhooks for invoices (user mentioned as backend purpose).

@@ -12,10 +12,12 @@ Supabase project: https://pnqqmzszasvfnvnnonvd.supabase.co (auth + Postgres; NO 
 - Password: DemoClient#2026
 - Email pre-confirmed.
 
+## Seed test clients (RLS adversarial test)
+- Client A: client.a@seed.flyboytest.com / SeedTest#2026! (intact)
+- Client B: client.b@seed.flyboytest.com — GDPR-ERASED, login permanently disabled
+
 ## Important state
-- The user runs /app/supabase_schema.sql themselves in the Supabase SQL Editor.
-  Until they do, tables do not exist: backend /api/clients/ensure returns 503
-  with a schema hint and the frontend shows a "Database schema not set up yet" banner.
+- Schema SQL HAS been run by the user; tables + RLS live. Demo data seeded for demo client.
 - Email confirmation is still ENABLED in the Supabase project; new signups via the
   UI will get "check your email". The two accounts above are pre-confirmed.
 - Supabase email validation rejects made-up domains (email_address_invalid); use
