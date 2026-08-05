@@ -19,7 +19,7 @@ ADMIN_EMAILS = [e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").sp
 
 sb = create_client(SUPABASE_URL, SERVICE_KEY)
 
-app = FastAPI(title="Frame & Form Portal API")
+app = FastAPI(title="Flyboy Videography Portal API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
