@@ -25,7 +25,7 @@ export default function SiteHeader() {
       data-testid="site-header"
       data-scrolled={scrolled}
       className={`fixed top-0 z-50 w-full border-b transition-all duration-300 ${
-        scrolled ? "border-dune bg-cream/85 text-ink backdrop-blur-md" : "border-transparent bg-transparent text-cream"
+        scrolled ? "border-dune bg-cream text-ink shadow-[0_4px_20px_rgba(23,20,15,0.06)]" : "border-transparent bg-transparent text-cream"
       }`}
     >
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">

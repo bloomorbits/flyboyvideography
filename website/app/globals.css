@@ -18,6 +18,19 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Anchor jumps + keyboard section navigation must land BELOW the fixed
+   header — otherwise the target row is stuck behind the header. */
+html {
+  scroll-padding-top: 5rem;
+}
+
+/* Marquee edge fade — softens the left/right cutoff so partial words
+   at container edges look intentional (fade) rather than clipped. */
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 6%, #000 94%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 6%, #000 94%, transparent 100%);
+}
+
 /* custom cursor: hide native pointer on hover-capable devices */
 @media (hover: hover) {
   .custom-cursor,

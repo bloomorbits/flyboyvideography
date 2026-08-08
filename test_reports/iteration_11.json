@@ -1,0 +1,20 @@
+{
+  "summary": "Verified all 3 layout bug fixes on Next.js site (port 3001): (1) fixed header is fully opaque cream rgb(250,248,244) when scrolled on /, /portfolio, /services with data-scrolled toggling correctly; (2) Marquee has linear-gradient mask-image on both edges; (3) home CTA section renders 3 action links (packages/faq/enquire) filling the previously empty ~337px gap. Header adapts per route: /faq, /privacy, /terms, /not-found start with data-scrolled=true (light variant) at scrollY=0. Cookie banner (z=60) sits above header (z=50); Accept all button fully within viewport (y=725, h=36, vh=900). All 6 public routes return HTTP 200 (/not-found intentionally 404). No console errors beyond a benign 404 for a missing asset (likely favicon) that pre-existed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Minor: one 404 request in console on all pages (likely a missing static asset such as favicon/og-image). Not part of this iteration's scope but worth investigating."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100%"},
+  "seed_data_creation": "",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Site runs via `yarn start` on :3001 (Next 15 prod build). Header component uses data-scrolled attr; DARK_HERO_ROUTES = {/, /portfolio, /services}. Marquee mask class is `.marquee-mask` in globals.css. Cookie banner has z-[60], header z-50 — do not lower banner z."
+}
