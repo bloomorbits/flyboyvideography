@@ -17,6 +17,25 @@
 - SSR + JSON-LD (GBP OfferCatalog) verified in raw HTML; iteration_8: 100% pass,
   content verbatim, zero invented deliverables, portal + backend regression OK.
 
+## Implemented (June 2026) — session 8 (design system layer on public site)
+- Services & Pricing + home upgraded with the client's full interaction spec —
+  ALL implemented, nothing cut (caveats flagged & accepted: cursor desktop-only,
+  scrubber/mute are real mechanics on a simulated timeline labeled
+  "Showreel · placeholder" until real reel footage arrives):
+  sticky transparent→frosted nav, custom ring cursor with "view" label,
+  IntersectionObserver scroll reveals, marquee dividers, dark hero (#141210)
+  with drifting warm blobs + film grain + working player bar (ticking timecode,
+  click-to-seek, mute toggle), headline "Turning visuals into value" (client's
+  phrase), glass pricing cards (rgba white 0.45 + blur 14px + hover lift).
+- iteration_9: 100% pass, zero console errors. JSON-LD "duplicate" investigated:
+  only 1 real script tag; 2nd match is escaped RSC flight payload (normal Next).
+- Components: /app/website/app/components/{Cursor,SiteHeader,Reveal,Marquee,HeroPlayer}.js
+- CARRY FORWARD to Portfolio page: play-icon overlay + JetBrains Mono duration
+  badge on video cards; stills get NO play icon (that absence distinguishes
+  them); hover lift; same reveals/marquee/cursor system.
+- Website dev server: cd /app/website && nohup yarn dev > /var/log/website.log 2>&1 &
+  (port 3001; NOT supervisor-managed — restart manually after pod restarts).
+
 ## TRACKED FOLLOW-UPS (user-ordered, NOT started)
 - P0 next: Portfolio page on the public site; blog later.
 - P1: PORTAL RESTYLE onto the white/black/beige token system (replace dark theme
