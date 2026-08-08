@@ -1,0 +1,155 @@
+// Portfolio placeholder items. No real footage is claimed here — every card
+// is styled as a placeholder tile matching the hero's ambient/grain aesthetic
+// until the client supplies actual work samples.
+
+export const CATEGORIES = [
+  { id: "all", label: "All work" },
+  { id: "weddings", label: "Weddings" },
+  { id: "birthdays", label: "Birthday Celebrations" },
+  { id: "naming", label: "Naming & Gender Reveal" },
+  { id: "corporate", label: "Corporate Events" },
+  { id: "lifestyle", label: "Lifestyle Reels" },
+];
+
+// tone → the two hues used behind the placeholder tile (matches hero blobs)
+// span → optional bento-style column/row span for visual rhythm
+export const items = [
+  {
+    id: "w-01",
+    category: "weddings",
+    kind: "video",
+    title: "Highlight Film · Placeholder",
+    meta: "Wedding · Cinematic Highlight",
+    duration: "01:24",
+    tone: ["#8a5a2b", "#141210"],
+    span: "wide",
+  },
+  {
+    id: "w-02",
+    category: "weddings",
+    kind: "still",
+    title: "Ceremony Still · Placeholder",
+    meta: "Wedding · Still Frame",
+    tone: ["#a97142", "#17140f"],
+  },
+  {
+    id: "w-03",
+    category: "weddings",
+    kind: "video",
+    title: "Reception Reel · Placeholder",
+    meta: "Wedding · Social Reel",
+    duration: "00:58",
+    tone: ["#6b5537", "#141210"],
+  },
+
+  {
+    id: "b-01",
+    category: "birthdays",
+    kind: "video",
+    title: "Milestone Birthday · Placeholder",
+    meta: "Birthday · Highlight",
+    duration: "01:12",
+    tone: ["#c88a4a", "#141210"],
+  },
+  {
+    id: "b-02",
+    category: "birthdays",
+    kind: "still",
+    title: "Candid Moment · Placeholder",
+    meta: "Birthday · Still Frame",
+    tone: ["#a97142", "#17140f"],
+  },
+  {
+    id: "b-03",
+    category: "birthdays",
+    kind: "video",
+    title: "Party Reel · Placeholder",
+    meta: "Birthday · Social Reel",
+    duration: "00:42",
+    tone: ["#8a5a2b", "#141210"],
+    span: "tall",
+  },
+
+  {
+    id: "n-01",
+    category: "naming",
+    kind: "video",
+    title: "Naming Ceremony · Placeholder",
+    meta: "Naming · Highlight",
+    duration: "01:36",
+    tone: ["#a97142", "#141210"],
+  },
+  {
+    id: "n-02",
+    category: "naming",
+    kind: "still",
+    title: "Family Portrait · Placeholder",
+    meta: "Naming · Still Frame",
+    tone: ["#c88a4a", "#17140f"],
+  },
+  {
+    id: "n-03",
+    category: "naming",
+    kind: "video",
+    title: "Gender Reveal · Placeholder",
+    meta: "Gender Reveal · Highlight",
+    duration: "00:47",
+    tone: ["#8a5a2b", "#141210"],
+  },
+
+  {
+    id: "c-01",
+    category: "corporate",
+    kind: "video",
+    title: "Brand Launch · Placeholder",
+    meta: "Corporate · Event Film",
+    duration: "01:52",
+    tone: ["#6b5537", "#141210"],
+    span: "wide",
+  },
+  {
+    id: "c-02",
+    category: "corporate",
+    kind: "still",
+    title: "Keynote Still · Placeholder",
+    meta: "Corporate · Still Frame",
+    tone: ["#a97142", "#17140f"],
+  },
+  {
+    id: "c-03",
+    category: "corporate",
+    kind: "video",
+    title: "Conference Recap · Placeholder",
+    meta: "Corporate · Recap Reel",
+    duration: "01:08",
+    tone: ["#8a5a2b", "#141210"],
+  },
+
+  {
+    id: "l-01",
+    category: "lifestyle",
+    kind: "video",
+    title: "Lifestyle Reel · Placeholder",
+    meta: "Lifestyle · Social Reel",
+    duration: "00:38",
+    tone: ["#c88a4a", "#141210"],
+    span: "tall",
+  },
+  {
+    id: "l-02",
+    category: "lifestyle",
+    kind: "still",
+    title: "Editorial Still · Placeholder",
+    meta: "Lifestyle · Still Frame",
+    tone: ["#a97142", "#17140f"],
+  },
+  {
+    id: "l-03",
+    category: "lifestyle",
+    kind: "video",
+    title: "Everyday Motion · Placeholder",
+    meta: "Lifestyle · Cinematic",
+    duration: "01:04",
+    tone: ["#6b5537", "#141210"],
+  },
+];

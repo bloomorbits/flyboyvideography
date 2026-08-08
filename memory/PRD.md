@@ -36,8 +36,33 @@
 - Website dev server: cd /app/website && nohup yarn dev > /var/log/website.log 2>&1 &
   (port 3001; NOT supervisor-managed — restart manually after pod restarts).
 
+## Implemented (Feb 2026) — session 9 (Portfolio page)
+- New /portfolio route on the public Next site with hybrid video/stills grid.
+- Client component: /app/website/app/components/PortfolioGrid.js
+  - 6 filter chips (All + 5 categories) with live counts, ARIA tabs semantics.
+  - Categories: Weddings, Birthday Celebrations, Naming & Gender Reveal,
+    Corporate Events (NEW — portfolio-only, no matching services package),
+    Lifestyle Reels.
+  - Card rules honoured per PRD carry-forward:
+    * video cards → play glyph overlay + JetBrains Mono duration badge
+    * still cards → STILL badge, NO play overlay
+    * both → hover lift + subtle scale, same beige/coal gradient + film grain
+      as the hero (no invented imagery; every tile labelled "Placeholder")
+  - Bento rhythm via optional "wide"/"tall" span per item.
+- Data: /app/website/lib/portfolio.js — 15 placeholder items, 3 per category,
+  each tagged kind=video|still with tone hues matching hero blobs.
+- Server component wrapper: /app/website/app/portfolio/page.js
+  - Metadata title/description + JSON-LD CollectionPage schema.
+  - Reuses HeroPlayer (headline "Work in motion, moments held still."), Marquee,
+    Reveal — no design drift.
+- SiteHeader now exposes "Work" link. Home hero gets a "See the work" CTA.
+- Verified in preview: SSR renders all 15 cards + all 6 filter chips + JSON-LD,
+  filter switching updates card set (corporate → 3 cards: 2 video + 1 still),
+  custom cursor VIEW label fires on card hover, no console errors.
+
 ## TRACKED FOLLOW-UPS (user-ordered, NOT started)
-- P0 next: Portfolio page on the public site; blog later.
+- P0 next: Contact / enquiry form on the public site (hold until Portfolio was
+  accepted — user asked to hold this behind Portfolio).
 - P1: PORTAL RESTYLE onto the white/black/beige token system (replace dark theme
   + cyan accent) — user said "flag as tracked follow-up, don't start today".
 - P1: Subdomain deployment split (Vercel: root = Next site, portal = subdomain).

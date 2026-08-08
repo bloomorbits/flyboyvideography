@@ -24,7 +24,10 @@ export default function SiteHeader() {
         <Link href="/" data-testid="site-logo" className="font-display text-lg font-bold tracking-tight">
           FLYBOY<span className="opacity-40">/</span>VIDEOGRAPHY
         </Link>
-        <nav className="flex items-center gap-8 text-sm">
+        <nav className="flex items-center gap-6 text-sm md:gap-8">
+          <Link href="/portfolio" data-testid="nav-portfolio" className="underline-offset-4 hover:underline">
+            Work
+          </Link>
           <Link href="/services" data-testid="nav-services" className="underline-offset-4 hover:underline">
             Services &amp; Pricing
           </Link>

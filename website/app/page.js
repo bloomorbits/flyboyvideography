@@ -17,13 +17,20 @@ export default function Home() {
         headline="Turning visuals into value"
         sub="Cinematic films of the moments that matter — with clear, transparent pricing and fast delivery."
         cta={
-          <div className="mt-10">
+          <div className="mt-10 flex flex-wrap gap-3">
             <Link
               href="/services"
               data-testid="hero-services-cta"
               className="inline-block rounded-full bg-cream px-8 py-3 font-medium text-ink transition-opacity hover:opacity-85"
             >
               See services &amp; pricing
+            </Link>
+            <Link
+              href="/portfolio"
+              data-testid="hero-portfolio-cta"
+              className="inline-block rounded-full border border-cream/40 px-8 py-3 font-medium text-cream transition-colors hover:bg-cream/10"
+            >
+              See the work
             </Link>
           </div>
         }
