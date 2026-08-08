@@ -5,40 +5,26 @@ import Reveal from "./Reveal";
 
 function PlayGlyph() {
   return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden
-    >
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M8 5v14l11-7z" />
     </svg>
   );
 }
 
+// Uniform tile. Deliberately no col-span / row-span variants —
+// mixed spans plus aspect-ratio children created the empty-slot bug
+// reported on the live site. All 15 tiles share the same 4:3 frame so
+// every row is the same height and CSS Grid cannot leave holes.
 function Card({ item }) {
   const isVideo = item.kind === "video";
-
-  const spanClass =
-    item.span === "wide"
-      ? "md:col-span-2"
-      : item.span === "tall"
-      ? "md:row-span-2"
-      : "";
-
-  const heightClass = item.span === "tall" ? "aspect-[3/4] md:aspect-auto md:h-full" : "aspect-[4/3]";
-
   return (
     <article
       data-testid={`portfolio-card-${item.id}`}
       data-cursor
       data-kind={item.kind}
-      className={`group relative cursor-pointer overflow-hidden rounded-lg border border-dune bg-coal transition-transform duration-500 ease-out hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_18px_44px_rgba(23,20,15,0.18)] ${spanClass}`}
+      className="group relative cursor-pointer overflow-hidden rounded-lg border border-dune bg-coal transition-transform duration-500 ease-out hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_18px_44px_rgba(23,20,15,0.18)]"
     >
-      <div className={`relative w-full ${heightClass}`}>
-        {/* Pexels stock still — free licence, generic content, no logos/venues.
-            Replaced 1:1 when real client footage lands. */}
+      <div className="relative aspect-[4/3] w-full">
         <img
           src={item.src}
           alt=""
@@ -47,61 +33,56 @@ function Card({ item }) {
           decoding="async"
           className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
         />
-        {/* darkening layer so overlays stay legible on any image */}
         <div aria-hidden className="absolute inset-0 bg-black/25" />
         <div aria-hidden className="grain opacity-50" />
 
-        {/* PLACEHOLDER ribbon — deliberately loud. Real footage looks
-            convincing, so honesty about the source is more important here,
-            not less. Sits diagonally in the top-right and is always visible. */}
+        {/* Single per-tile placeholder marker — the diagonal ribbon.
+            The old amber caption line was removed after the top banner +
+            ribbon was judged sufficient. Ribbon has strong contrast
+            (cream text on ink@90) so it's readable on any stock photo. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute -right-11 top-6 rotate-45 bg-ink/90 px-14 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-cream shadow-lg ring-1 ring-cream/20"
+          data-testid={`portfolio-ribbon-${item.id}`}
+          className="pointer-events-none absolute -right-11 top-6 rotate-45 bg-ink/95 px-14 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-cream shadow-lg ring-1 ring-cream/25"
         >
           Placeholder
         </div>
 
-        {/* meta strip: kind + duration */}
+        {/* Kind + duration badges. Not a placeholder indicator —
+            these convey what the tile IS (reel vs still, runtime). */}
         <div className="absolute left-4 top-4 flex items-center gap-2">
-          <span className="rounded-sm border border-cream/25 bg-black/40 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-cream/90 backdrop-blur-sm">
+          <span className="rounded-sm border border-cream/25 bg-black/45 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-cream backdrop-blur-sm">
             {isVideo ? "Reel" : "Still"}
           </span>
           {isVideo && (
             <span
               data-testid={`portfolio-duration-${item.id}`}
-              className="rounded-sm bg-cream/90 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-ink"
+              className="rounded-sm bg-cream/95 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-ink"
             >
               {item.duration}
             </span>
           )}
         </div>
 
-        {/* play overlay — video cards only */}
         {isVideo && (
           <div
             data-testid={`portfolio-play-${item.id}`}
             className="absolute inset-0 flex items-center justify-center"
           >
-            <span className="flex h-16 w-16 items-center justify-center rounded-full border border-cream/40 bg-black/35 text-cream backdrop-blur-md transition-transform duration-300 group-hover:scale-110">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full border border-cream/40 bg-black/40 text-cream backdrop-blur-md transition-transform duration-300 group-hover:scale-110">
               <PlayGlyph />
             </span>
           </div>
         )}
 
-        {/* caption + secondary "Placeholder tile" line so the message
-            survives even if the diagonal ribbon is somehow cropped. */}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-5">
-          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-cream/70">
+        {/* Title strip. Placeholder marker is intentionally dropped from
+            here — the top-of-page banner + diagonal ribbon carry it. */}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent p-5">
+          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-cream/75">
             {item.meta}
           </p>
           <p className="mt-1 font-display text-lg font-semibold text-cream">
-            {item.title}
-          </p>
-          <p
-            data-testid={`portfolio-placeholder-note-${item.id}`}
-            className="mt-2 font-mono text-[10px] uppercase tracking-[0.3em] text-amber-200/90"
-          >
-            <span aria-hidden>◇</span> Placeholder tile · stock footage · not client work
+            {item.title.replace(" · Placeholder", "")}
           </p>
         </div>
       </div>
@@ -125,7 +106,6 @@ export default function PortfolioGrid() {
 
   return (
     <section className="mx-auto max-w-6xl px-6 py-16 md:py-20">
-      {/* filter chips */}
       <Reveal>
         <div
           data-testid="portfolio-filters"
@@ -163,16 +143,17 @@ export default function PortfolioGrid() {
         </div>
       </Reveal>
 
-      {/* grid */}
+      {/* Uniform 1/2/3-column grid. No auto-rows, no col/row-span variants,
+          no per-card Reveal wrapper (Reveal in a grid child was collapsing
+          to ~2px on load, which is what caused the huge unexplained gaps
+          reported on the live site). */}
       <div
         data-testid="portfolio-grid"
         data-active-category={active}
-        className="mt-10 grid auto-rows-[minmax(0,1fr)] grid-cols-1 gap-5 md:grid-cols-3"
+        className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3"
       >
-        {filtered.map((item, i) => (
-          <Reveal key={item.id} delay={Math.min(i * 60, 360)} className={item.span === "wide" ? "md:col-span-2" : item.span === "tall" ? "md:row-span-2" : ""}>
-            <Card item={item} />
-          </Reveal>
+        {filtered.map((item) => (
+          <Card key={item.id} item={item} />
         ))}
       </div>
 

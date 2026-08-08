@@ -1,0 +1,33 @@
+{
+  "summary": "Frontend-only verification of 3 bug fixes on Next.js public site (localhost:3001) for /portfolio and /. All three bug fixes verified as working. Grid renders uniform 267px cards with 19-20px row gaps, only one marquee-divider on /portfolio, hero kicker text is 'PORTFOLIO', 15 diagonal ribbons present with 0 forbidden 'STOCK FOOTAGE / Stock · not client' text lines inside cards on both /portfolio and /. Filter interactivity verified for Weddings (3), Corporate Events (3), All work (15) — all keep uniform 267px heights.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "lib/portfolio.js still carries unused span:'wide'|'tall' fields — main agent noted this is intentional. Suggest removing dead fields in a future cleanup to avoid confusion, but not a bug."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Portfolio page filters use data-testid pattern 'portfolio-filter-{key}' (all, weddings, birthdays, naming, corporate, lifestyle). Cards use 'portfolio-card-*', ribbons 'portfolio-ribbon-*', marquee 'marquee-divider'. Cookie banner testid: 'cookie-consent-necessary-only'. Public Next.js site at localhost:3001 is separate from FastAPI backend (8001) and CRA portal (3000).",
+  "verification_metrics": {
+    "portfolio_card_heights_px": [267],
+    "portfolio_row_gaps_px": [19, 20, 19, 20],
+    "marquee_divider_count": 1,
+    "hero_kicker_text": "PORTFOLIO",
+    "ribbon_count": 15,
+    "forbidden_stock_text_in_cards": 0,
+    "top_banner_present": true,
+    "home_page_stock_not_client_occurrences": 0,
+    "filter_weddings_visible": 3,
+    "filter_corporate_visible": 3,
+    "filter_all_visible": 15
+  }
+}

@@ -12,6 +12,12 @@ body {
   color: #faf8f4;
 }
 
+/* used by the /loading fade-in Bloomorbit credit line */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* custom cursor: hide native pointer on hover-capable devices */
 @media (hover: hover) {
   .custom-cursor,

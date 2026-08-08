@@ -2,6 +2,7 @@ import Link from "next/link";
 import HeroPlayer from "./components/HeroPlayer";
 import Marquee from "./components/Marquee";
 import Reveal from "./components/Reveal";
+import HomePortfolioHighlights from "./components/HomePortfolioHighlights";
 
 export const metadata = {
   title: "Flyboy Videography — Cinematic Event Films",
@@ -36,6 +37,7 @@ export default function Home() {
         }
       />
       <Marquee items={CATEGORIES} />
+      <HomePortfolioHighlights />
       <section className="mx-auto max-w-6xl px-6 py-20">
         <Reveal>
           <h2 className="max-w-2xl font-display text-3xl font-bold tracking-tight md:text-4xl">
