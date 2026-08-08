@@ -22,6 +22,33 @@ export const metadata = {
   },
   description:
     "Cinematic videography for weddings, birthdays, naming ceremonies, lifestyle shoots and graduations. Serving Leeds, Sheffield and West Yorkshire. Transparent GBP pricing.",
+  icons: {
+    icon: [{ url: "/favicon.ico", sizes: "any" }],
+    shortcut: "/favicon.ico",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "Flyboy Videography",
+    url: SITE_URL,
+    title: "Flyboy Videography — Cinematic Event Films",
+    description:
+      "Cinematic videography for weddings, birthdays, naming ceremonies, lifestyle shoots and graduations. Serving Leeds, Sheffield and West Yorkshire.",
+    images: [
+      {
+        url: "/og.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Flyboy Videography — placeholder cover image (to be replaced with real brand imagery)",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Flyboy Videography — Cinematic Event Films",
+    description:
+      "Cinematic videography for weddings, birthdays, naming ceremonies, lifestyle shoots and graduations.",
+    images: ["/og.jpg"],
+  },
 };
 
 // Site-wide JSON-LD. The `creator` field names Bloomorbit Studio with a
