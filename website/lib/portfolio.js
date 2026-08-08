@@ -1,6 +1,13 @@
 // Portfolio placeholder items. No real footage is claimed here — every card
-// is styled as a placeholder tile matching the hero's ambient/grain aesthetic
-// until the client supplies actual work samples.
+// is styled and labelled as a Placeholder tile until the client supplies
+// actual work samples. The `src` fields point at generic free-licence stock
+// stills sourced from Pexels (Free Pexels License, no attribution required,
+// no visible logos or recognisable venues). Video-kind cards use the still
+// as a poster frame and keep the play glyph + duration badge to preview the
+// "would-be" video state.
+
+const px = (id) =>
+  `https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=1600`;
 
 export const CATEGORIES = [
   { id: "all", label: "All work" },
@@ -11,8 +18,8 @@ export const CATEGORIES = [
   { id: "lifestyle", label: "Lifestyle Reels" },
 ];
 
-// tone → the two hues used behind the placeholder tile (matches hero blobs)
-// span → optional bento-style column/row span for visual rhythm
+// Each tile carries a `src` (Pexels still) and, for video-kind cards, a
+// duration badge. `span` controls the bento grid rhythm.
 export const items = [
   {
     id: "w-01",
@@ -21,7 +28,7 @@ export const items = [
     title: "Highlight Film · Placeholder",
     meta: "Wedding · Cinematic Highlight",
     duration: "01:24",
-    tone: ["#8a5a2b", "#141210"],
+    src: px(26673556),
     span: "wide",
   },
   {
@@ -30,7 +37,7 @@ export const items = [
     kind: "still",
     title: "Ceremony Still · Placeholder",
     meta: "Wedding · Still Frame",
-    tone: ["#a97142", "#17140f"],
+    src: px(13456843),
   },
   {
     id: "w-03",
@@ -39,7 +46,7 @@ export const items = [
     title: "Reception Reel · Placeholder",
     meta: "Wedding · Social Reel",
     duration: "00:58",
-    tone: ["#6b5537", "#141210"],
+    src: px(15305396),
   },
 
   {
@@ -49,7 +56,7 @@ export const items = [
     title: "Milestone Birthday · Placeholder",
     meta: "Birthday · Highlight",
     duration: "01:12",
-    tone: ["#c88a4a", "#141210"],
+    src: px(15211704),
   },
   {
     id: "b-02",
@@ -57,7 +64,7 @@ export const items = [
     kind: "still",
     title: "Candid Moment · Placeholder",
     meta: "Birthday · Still Frame",
-    tone: ["#a97142", "#17140f"],
+    src: px(6515979),
   },
   {
     id: "b-03",
@@ -66,7 +73,7 @@ export const items = [
     title: "Party Reel · Placeholder",
     meta: "Birthday · Social Reel",
     duration: "00:42",
-    tone: ["#8a5a2b", "#141210"],
+    src: px(137485),
     span: "tall",
   },
 
@@ -77,7 +84,7 @@ export const items = [
     title: "Naming Ceremony · Placeholder",
     meta: "Naming · Highlight",
     duration: "01:36",
-    tone: ["#a97142", "#141210"],
+    src: px(21581547),
   },
   {
     id: "n-02",
@@ -85,7 +92,7 @@ export const items = [
     kind: "still",
     title: "Family Portrait · Placeholder",
     meta: "Naming · Still Frame",
-    tone: ["#c88a4a", "#17140f"],
+    src: px(16475067),
   },
   {
     id: "n-03",
@@ -94,7 +101,7 @@ export const items = [
     title: "Gender Reveal · Placeholder",
     meta: "Gender Reveal · Highlight",
     duration: "00:47",
-    tone: ["#8a5a2b", "#141210"],
+    src: px(28680700),
   },
 
   {
@@ -104,7 +111,7 @@ export const items = [
     title: "Brand Launch · Placeholder",
     meta: "Corporate · Event Film",
     duration: "01:52",
-    tone: ["#6b5537", "#141210"],
+    src: px(9275222),
     span: "wide",
   },
   {
@@ -113,7 +120,7 @@ export const items = [
     kind: "still",
     title: "Keynote Still · Placeholder",
     meta: "Corporate · Still Frame",
-    tone: ["#a97142", "#17140f"],
+    src: px(8463151),
   },
   {
     id: "c-03",
@@ -122,7 +129,7 @@ export const items = [
     title: "Conference Recap · Placeholder",
     meta: "Corporate · Recap Reel",
     duration: "01:08",
-    tone: ["#8a5a2b", "#141210"],
+    src: px(26202153),
   },
 
   {
@@ -132,7 +139,7 @@ export const items = [
     title: "Lifestyle Reel · Placeholder",
     meta: "Lifestyle · Social Reel",
     duration: "00:38",
-    tone: ["#c88a4a", "#141210"],
+    src: px(19871471),
     span: "tall",
   },
   {
@@ -141,7 +148,7 @@ export const items = [
     kind: "still",
     title: "Editorial Still · Placeholder",
     meta: "Lifestyle · Still Frame",
-    tone: ["#a97142", "#17140f"],
+    src: px(9026864),
   },
   {
     id: "l-03",
@@ -150,6 +157,6 @@ export const items = [
     title: "Everyday Motion · Placeholder",
     meta: "Lifestyle · Cinematic",
     duration: "01:04",
-    tone: ["#6b5537", "#141210"],
+    src: px(37201825),
   },
 ];

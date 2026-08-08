@@ -12,7 +12,34 @@ export const metadata = {
 const gbp = (n) => `£${n}`;
 const CATEGORIES = ["Weddings", "Birthdays", "Naming Ceremonies", "Gender Reveals", "Lifestyle", "Graduations", "Extra Reels"];
 
-function TierCard({ tier, hoursOnly }) {
+// Builds a mailto link pre-filled with the package + tier the visitor tapped.
+// Kept as a mailto for now — swaps to the enquiry form Route Handler once the
+// contact-form task lands (per PRD backlog).
+function enquireHref({ packageTitle, tierName, price, coverage }) {
+  const subject = tierName
+    ? `Enquiry — ${packageTitle} · ${tierName} (${gbp(price)})`
+    : `Enquiry — ${packageTitle} (${gbp(price)})`;
+  const body = [
+    `Hi Flyboy,`,
+    ``,
+    `I'd like to enquire about the ${packageTitle}${tierName ? ` — ${tierName}` : ""} package (${gbp(price)}, ${coverage}).`,
+    ``,
+    `Event date:`,
+    `Location:`,
+    `A bit about the event:`,
+    ``,
+    `Thanks.`,
+  ].join("\n");
+  return `mailto:hello@flyboyvideography.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function TierCard({ tier, hoursOnly, packageTitle }) {
+  const href = enquireHref({
+    packageTitle,
+    tierName: tier.name,
+    price: tier.price,
+    coverage: tier.coverage,
+  });
   return (
     <div
       data-testid={`tier-${tier.name.toLowerCase()}`}
@@ -39,6 +66,20 @@ function TierCard({ tier, hoursOnly }) {
           </ul>
         </div>
       )}
+      <a
+        href={href}
+        data-testid={`tier-cta-${tier.name.toLowerCase()}`}
+        data-package={packageTitle}
+        data-tier={tier.name}
+        className={`mt-8 inline-flex w-full items-center justify-between gap-2 rounded-full border px-5 py-3 text-sm font-medium transition-colors duration-200 ${
+          tier.popular
+            ? "border-transparent bg-ink text-cream hover:bg-ink/90"
+            : "border-ink/20 bg-transparent text-ink hover:border-ink hover:bg-ink hover:text-cream"
+        }`}
+      >
+        <span>Enquire about {tier.name}</span>
+        <span aria-hidden className="font-mono">→</span>
+      </a>
     </div>
   );
 }
@@ -110,7 +151,7 @@ export default function ServicesPage() {
             <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-3">
               {pkg.tiers.map((tier, i) => (
                 <Reveal key={tier.name} delay={i * 100}>
-                  <TierCard tier={tier} hoursOnly={pkg.hoursOnly} />
+                  <TierCard tier={tier} hoursOnly={pkg.hoursOnly} packageTitle={pkg.title} />
                 </Reveal>
               ))}
             </div>
@@ -131,7 +172,7 @@ export default function ServicesPage() {
           </Reveal>
           <Reveal delay={100}>
             <div className="mt-10 max-w-md">
-              <div data-testid="tier-graduation" className="glass-card rounded-lg p-8">
+              <div data-testid="tier-graduation" className="glass-card flex flex-col rounded-lg p-8">
                 <p className="font-mono text-4xl font-bold tracking-tight">{gbp(graduation.price)}</p>
                 <p className="mt-1 font-mono text-xs uppercase tracking-widest text-ink/60">{graduation.coverage}</p>
                 <ul className="mt-6 space-y-2.5 border-t border-ink/10 pt-5 text-sm text-ink/80">
@@ -142,6 +183,20 @@ export default function ServicesPage() {
                     </li>
                   ))}
                 </ul>
+                <a
+                  href={enquireHref({
+                    packageTitle: graduation.title,
+                    tierName: "",
+                    price: graduation.price,
+                    coverage: graduation.coverage,
+                  })}
+                  data-testid="tier-cta-graduation"
+                  data-package={graduation.title}
+                  className="mt-8 inline-flex w-full items-center justify-between gap-2 rounded-full bg-ink px-5 py-3 text-sm font-medium text-cream transition-colors duration-200 hover:bg-ink/90"
+                >
+                  <span>Enquire about {graduation.title}</span>
+                  <span aria-hidden className="font-mono">→</span>
+                </a>
               </div>
             </div>
           </Reveal>

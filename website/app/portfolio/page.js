@@ -61,6 +61,25 @@ export default function PortfolioPage() {
 
       <Marquee items={MARQUEE} />
 
+      {/* Transparency strip — visible to every visitor before they see the grid.
+          Set once, so no visitor can mistake the placeholder set for real work. */}
+      <div className="border-b border-dune bg-amber-50/60">
+        <div className="mx-auto flex max-w-6xl items-start gap-3 px-6 py-4 text-sm text-ink/80">
+          <span
+            aria-hidden
+            className="mt-0.5 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-ink text-[11px] font-bold text-cream"
+          >
+            !
+          </span>
+          <p data-testid="portfolio-transparency-note">
+            <strong className="font-semibold">These tiles are placeholders</strong> —
+            free-licence stock stills sourced from Pexels, not client work. Real
+            reels drop as soon as they clear approval. Each tile is labelled to
+            avoid any confusion.
+          </p>
+        </div>
+      </div>
+
       <PortfolioGrid />
 
       <section className="relative overflow-hidden border-t border-dune bg-sand">
