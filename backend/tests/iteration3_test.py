@@ -11,7 +11,12 @@ API = f"{BASE_URL}/api"
 
 SUPABASE_URL = "https://pnqqmzszasvfnvnnonvd.supabase.co"
 SUPABASE_ANON = "sb_publishable_KhBYDE7Rl1aNrMf22lIJ7w_53HJF86f"
-SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or "REDACTED_FROM_HISTORY"
+SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+if not SERVICE_KEY:
+    pytest.skip(
+        "SUPABASE_SERVICE_ROLE_KEY not set — export it from backend/.env before running",
+        allow_module_level=True,
+    )
 
 ADMIN_EMAIL = "flyboy.admin.demo@gmail.com"
 ADMIN_PASSWORD = "AdminStudio#2026"

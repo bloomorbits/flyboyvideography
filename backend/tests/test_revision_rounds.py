@@ -6,7 +6,10 @@ import requests
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://db-bridge-5.preview.emergentagent.com").rstrip("/")
 SUPABASE_URL = "https://pnqqmzszasvfnvnnonvd.supabase.co"
 ANON_KEY = "sb_publishable_KhBYDE7Rl1aNrMf22lIJ7w_53HJF86f"
-SERVICE_KEY = "REDACTED_FROM_HISTORY"
+SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or pytest.skip(
+    "SUPABASE_SERVICE_ROLE_KEY not set — export it from backend/.env before running",
+    allow_module_level=True,
+)
 
 CLIENT_EMAIL = "demo.client.frameform@gmail.com"
 CLIENT_PASS = "DemoClient#2026"
