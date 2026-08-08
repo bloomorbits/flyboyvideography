@@ -3,6 +3,7 @@ import HeroPlayer from "../components/HeroPlayer";
 import Marquee from "../components/Marquee";
 import Reveal from "../components/Reveal";
 import PortfolioGrid from "../components/PortfolioGrid";
+import { SERVICE_AREA } from "../components/SiteFooter";
 import { CATEGORIES } from "../../lib/portfolio";
 
 export const metadata = {
@@ -36,7 +37,7 @@ export default function PortfolioPage() {
       />
 
       <HeroPlayer
-        kicker="Portfolio · Weddings · Birthdays · Naming · Corporate · Lifestyle"
+        kicker="Portfolio"
         headline="Work in motion, moments held still."
         sub="A hybrid look at reels and stills across every event we cover. Placeholder tiles for now — new work drops as it clears client approval."
         cta={
@@ -60,6 +61,18 @@ export default function PortfolioPage() {
       />
 
       <Marquee items={MARQUEE} />
+
+      {/* Service area strip — one line, same convention on the Services page. */}
+      <div className="border-b border-dune bg-cream">
+        <div className="mx-auto max-w-6xl px-6 py-4">
+          <p
+            data-testid="portfolio-service-area"
+            className="font-mono text-[11px] uppercase tracking-[0.3em] text-ink/60"
+          >
+            Serving {SERVICE_AREA} · Travel elsewhere quoted in advance
+          </p>
+        </div>
+      </div>
 
       {/* Transparency strip — visible to every visitor before they see the grid.
           Set once, so no visitor can mistake the placeholder set for real work. */}

@@ -2,6 +2,7 @@ import { packages, graduation, extras, bookingTerms } from "../../lib/pricing";
 import HeroPlayer from "../components/HeroPlayer";
 import Marquee from "../components/Marquee";
 import Reveal from "../components/Reveal";
+import { SERVICE_AREA } from "../components/SiteFooter";
 
 export const metadata = {
   title: "Services & Pricing",
@@ -136,6 +137,18 @@ export default function ServicesPage() {
 
       <Marquee items={CATEGORIES} />
 
+      {/* Service area strip — one line, same convention on the Portfolio page. */}
+      <div className="border-b border-dune bg-cream">
+        <div className="mx-auto max-w-6xl px-6 py-4">
+          <p
+            data-testid="services-service-area"
+            className="font-mono text-[11px] uppercase tracking-[0.3em] text-ink/60"
+          >
+            Serving {SERVICE_AREA} · Travel elsewhere quoted in advance
+          </p>
+        </div>
+      </div>
+
       {packages.map((pkg, idx) => (
         <section key={pkg.id} id={pkg.id} className="relative border-b border-dune">
           <SectionBackdrop />
@@ -155,6 +168,39 @@ export default function ServicesPage() {
                 </Reveal>
               ))}
             </div>
+
+            {/* Package-level CTA — one per package section, distinct from
+                the per-tier CTAs above. Pre-fills with just the package
+                name so a visitor unsure which tier to pick can start the
+                conversation. */}
+            <Reveal delay={400}>
+              <div className="mt-10 flex flex-col items-start justify-between gap-4 rounded-lg border border-ink/10 bg-cream/50 p-5 md:flex-row md:items-center">
+                <p className="text-sm text-ink/70">
+                  Not sure which tier fits? Start a conversation and we&rsquo;ll
+                  recommend the right {pkg.title.toLowerCase()} package for your event.
+                </p>
+                <a
+                  href={`mailto:hello@flyboyvideography.com?subject=${encodeURIComponent(`Enquiry — ${pkg.title}`)}&body=${encodeURIComponent(
+                    [
+                      `Hi Flyboy,`,
+                      ``,
+                      `I'd like to enquire about the ${pkg.title} package.`,
+                      ``,
+                      `Event date:`,
+                      `Location:`,
+                      `A bit about the event:`,
+                      ``,
+                      `Thanks.`,
+                    ].join("\n")
+                  )}`}
+                  data-testid={`package-cta-${pkg.id}`}
+                  data-package={pkg.title}
+                  className="inline-flex flex-shrink-0 items-center gap-2 rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-cream hover:bg-ink/90"
+                >
+                  Enquire about this package <span aria-hidden className="font-mono">→</span>
+                </a>
+              </div>
+            </Reveal>
           </div>
           {idx === 1 && (
             <div className="relative">

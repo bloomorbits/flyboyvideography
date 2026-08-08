@@ -97,6 +97,23 @@ export default function AuthPage() {
           >
             {mode === "login" ? "New client? Create an account" : "Already have an account? Sign in"}
           </button>
+
+          {/* Bloomorbit Studio credit — same rule as the public site footer. */}
+          <p
+            data-testid="auth-bloomorbit-credit"
+            className="mt-10 text-center text-xs uppercase tracking-[0.25em] text-zinc-500"
+          >
+            Built by{" "}
+            <a
+              href="https://bloomorbit.tech"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="auth-bloomorbit-credit-link"
+              className="underline decoration-dotted underline-offset-4 hover:text-zinc-200 hover:decoration-solid"
+            >
+              Bloomorbit Studio
+            </a>
+          </p>
         </div>
       </div>
     </div>

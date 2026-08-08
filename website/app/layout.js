@@ -1,37 +1,81 @@
 import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import SiteHeader from "./components/SiteHeader";
+import SiteFooter from "./components/SiteFooter";
 import Cursor from "./components/Cursor";
+import CookieConsent from "./components/CookieConsent";
+import ChatWidget from "./components/ChatWidget";
+import { BLOOMORBIT_NAME, BLOOMORBIT_URL } from "./components/BloomorbitCredit";
 
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk" });
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains" });
 
+const SITE_URL = "https://flyboyvideography.com";
+
 export const metadata = {
-  metadataBase: new URL("https://flyboyvideography.com"),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Flyboy Videography — Cinematic Event Films",
     template: "%s | Flyboy Videography",
   },
   description:
-    "Cinematic videography for weddings, birthdays, naming ceremonies, lifestyle shoots and graduations. UK-based, transparent GBP pricing.",
+    "Cinematic videography for weddings, birthdays, naming ceremonies, lifestyle shoots and graduations. Serving Leeds, Sheffield and West Yorkshire. Transparent GBP pricing.",
+};
+
+// Site-wide JSON-LD. The `creator` field names Bloomorbit Studio with a
+// resolvable URL, satisfying the branding requirement in structured data.
+const orgJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  "@id": `${SITE_URL}/#business`,
+  name: "Flyboy Videography",
+  url: SITE_URL,
+  email: "hello@flyboyvideography.com",
+  image: `${SITE_URL}/og.jpg`,
+  areaServed: [
+    { "@type": "City", name: "Leeds" },
+    { "@type": "City", name: "Sheffield" },
+    { "@type": "AdministrativeArea", name: "West Yorkshire" },
+  ],
+  priceRange: "££",
+  creator: {
+    "@type": "Organization",
+    name: BLOOMORBIT_NAME,
+    url: BLOOMORBIT_URL,
+  },
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrains.variable}`}>
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
+        />
+      </head>
       <body className="font-body antialiased">
+        {/*
+          Hidden HTML source comment — sits in the rendered DOM and is
+          visible to anyone who "view source"s the page, but is not
+          rendered visually. The credit is the source of truth link;
+          this comment is a bonus for developer curiosity.
+        */}
+        <div
+          aria-hidden
+          style={{ display: "none" }}
+          data-source-note
+          dangerouslySetInnerHTML={{
+            __html: `<!-- Built by ${BLOOMORBIT_NAME} · ${BLOOMORBIT_URL} -->`,
+          }}
+        />
         <Cursor />
         <SiteHeader />
         <main>{children}</main>
-        <footer className="border-t border-dune bg-sand">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-10 text-sm">
-            <p className="font-display font-bold">FLYBOY/VIDEOGRAPHY</p>
-            <p className="font-mono text-xs text-ink/60">
-              A 50% deposit secures your date · balance due 3–5 days before your event
-            </p>
-          </div>
-        </footer>
+        <SiteFooter />
+        <CookieConsent />
+        <ChatWidget />
       </body>
     </html>
   );

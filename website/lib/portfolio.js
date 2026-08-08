@@ -29,7 +29,6 @@ export const items = [
     meta: "Wedding · Cinematic Highlight",
     duration: "01:24",
     src: px(26673556),
-    span: "wide",
   },
   {
     id: "w-02",
@@ -74,7 +73,6 @@ export const items = [
     meta: "Birthday · Social Reel",
     duration: "00:42",
     src: px(137485),
-    span: "tall",
   },
 
   {
@@ -112,7 +110,6 @@ export const items = [
     meta: "Corporate · Event Film",
     duration: "01:52",
     src: px(9275222),
-    span: "wide",
   },
   {
     id: "c-02",
@@ -140,7 +137,6 @@ export const items = [
     meta: "Lifestyle · Social Reel",
     duration: "00:38",
     src: px(19871471),
-    span: "tall",
   },
   {
     id: "l-02",
