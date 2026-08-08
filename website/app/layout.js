@@ -5,6 +5,7 @@ import SiteFooter from "./components/SiteFooter";
 import Cursor from "./components/Cursor";
 import CookieConsent from "./components/CookieConsent";
 import ChatWidget from "./components/ChatWidget";
+import Analytics from "./components/Analytics";
 import { BLOOMORBIT_NAME, BLOOMORBIT_URL } from "./components/BloomorbitCredit";
 
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk" });
@@ -54,6 +55,18 @@ export default function RootLayout({ children }) {
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
         />
+        {/*
+          ⚠️  ANALYTICS / TRACKING SCRIPTS BELONG BEHIND THE CONSENT GATE.
+          Do NOT add a <script src="…googletagmanager…" /> or a raw gtag
+          snippet here in <head>. Anything that inits before hydration
+          bypasses the cookie banner, which makes the banner a lie.
+
+          Wire GA4 (or any tracking script) through the <Analytics /> slot
+          mounted below, which reads hasAnalyticsConsent() from
+          ./components/CookieConsent and listens for the "flyboy:consent"
+          window event. See ./components/Analytics.js for the exact
+          pattern — do not deviate from it.
+        */}
       </head>
       <body className="font-body antialiased">
         {/*
@@ -76,6 +89,10 @@ export default function RootLayout({ children }) {
         <SiteFooter />
         <CookieConsent />
         <ChatWidget />
+        {/* Analytics slot — currently renders null. Any GA4 / GTM / heatmap
+            wiring must happen INSIDE this component so it stays gated behind
+            hasAnalyticsConsent(). See components/Analytics.js for the pattern. */}
+        <Analytics />
       </body>
     </html>
   );
