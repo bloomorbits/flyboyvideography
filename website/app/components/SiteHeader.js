@@ -42,15 +42,15 @@ export default function SiteHeader() {
           <Link href="/faq" data-testid="nav-faq" className="underline-offset-4 hover:underline">
             FAQ
           </Link>
-          <a
-            href="mailto:hello@flyboyvideography.com"
-            data-testid="nav-enquire"
+          <Link
+            href="/book"
+            data-testid="nav-book"
             className={`rounded-full px-5 py-2 font-medium transition-colors duration-300 ${
               scrolled ? "bg-ink text-cream" : "bg-cream text-ink"
             }`}
           >
-            Enquire
-          </a>
+            Book
+          </Link>
         </nav>
       </div>
     </header>

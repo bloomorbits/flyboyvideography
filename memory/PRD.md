@@ -204,3 +204,49 @@ clients, bookings, retainer_subscriptions, deliverables, review_threads, invoice
 - P1: File upload for final deliverables (Supabase Storage).
 - P2: Email notifications on new cuts/comments.
 - P2: GDPR erasure flow (anonymize client, keep invoices).
+
+
+## Implemented (Feb 2026) — session 9 (Phase 1 Booking Flow)
+- Client-facing project booking (one-off, non-retainer) live on public Next.js
+  site at /book. Two-step form (package/tier/date → contact details) → Stripe
+  Checkout (deposit only, DIY tax mode, GBP) → /book/success or /book/cancel.
+- Schema: migration 006 introspected and confirmed applied (payment_transactions,
+  date_slot_locks, booking_intents; 4 new columns on bookings; partial unique
+  index bookings_one_confirmed_per_date verified via probe).
+- Backend endpoints (all in /app/backend/booking.py, mounted from server.py):
+  - GET  /api/booking/availability          → returns blocked_dates for 18mo ahead
+  - POST /api/booking/checkout              → creates booking_intent + Stripe
+                                              Checkout Session + soft
+                                              date_slot_lock (5min TTL)
+  - GET  /api/booking/status/{session_id}   → poll-safe, inline Stripe probe
+                                              fallback for slow webhooks
+  - POST /api/stripe/webhook                → signature-verified, idempotent;
+                                              atomic bookings insert as the DB
+                                              gate; on unique_violation issues
+                                              stripe.Refund.create automatically
+- Auth provisioning: on paid webhook the server creates (idempotent) a Supabase
+  auth user + clients row, then generates a Supabase-issued recovery link
+  (type=recovery, redirect_to=PORTAL_URL/auth?welcome=1) and emails it via
+  Resend using /app/backend/emails/booking_confirmation.{html,txt}.
+- Pricing source of truth: hardcoded constants mirrored in
+  /app/website/lib/booking-packages.js (client) and /app/backend/packages.py
+  (server, authoritative for actual charged amount). No packages table in
+  Supabase — confirmed via introspection this session.
+- Concurrency test /app/backend/tests/test_booking_concurrency.py — 10 threads
+  race against the same event_date, Stripe mocked; asserts exactly 1 confirmed
+  booking + 9 refunded_race + 9 refund calls. Passes 3/3 runs.
+- SiteHeader now surfaces "Book" as the primary nav CTA (was "Enquire" mailto).
+- New env vars in backend/.env: PUBLIC_SITE_URL, PORTAL_URL, RESEND_FROM_EMAIL.
+- New env file website/.env.local: NEXT_PUBLIC_API_BASE (points at backend).
+
+## Backlog (updated Feb 2026)
+- P1: Phase 2 retainer signup via Stripe Subscriptions.
+- P1: Client Portal restyle (dark/cyan → light/cream to match public site).
+- P1: Public contact form (Resend) replacing mailto: links throughout.
+- P2: V2 booking — short packages share the same calendar day (currently a
+  short package still blocks the whole day).
+- P2: Bunny.net for deliverable hosting.
+- P2: Tawk.to widget (respect cookie consent).
+- P2: Deliverable 90-day expiry + warning email.
+- P2: Deliverable access/download logging.
+- P2: T&Cs acceptance timestamp + IP capture at booking.
