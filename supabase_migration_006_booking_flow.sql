@@ -56,13 +56,20 @@ create table if not exists public.date_slot_locks (
     created_at   timestamptz not null default now()
 );
 
--- Partial unique index: only one *active* (unexpired) lock per date at a time.
--- Expired locks stay in the table for audit but don't block new locks.
-create unique index if not exists date_slot_locks_active_per_date
-    on public.date_slot_locks(event_date)
-    where expires_at > now();
-
-create index if not exists date_slot_locks_expires_idx on public.date_slot_locks(expires_at);
+-- Query-performance index only. Deliberately NOT a partial unique index
+-- with `WHERE expires_at > now()` — Postgres rejects non-IMMUTABLE
+-- functions in index predicates, and `now()` is STABLE. Enforcing "one
+-- active lock per date" is done at the application layer:
+--   1. Availability queries filter `WHERE expires_at > now()`.
+--   2. Checkout-create DELETEs expired locks for the requested date in
+--      the same transaction as the INSERT of the new lock.
+--   3. If a race slips through (both requests INSERT before either sees
+--      the other), the HARD guarantee is `bookings_one_confirmed_per_date`
+--      below, which is a proper partial unique index — one of the two
+--      races will fail unique_violation at webhook time and be auto-refunded.
+-- The lock table is a soft UX helper; the hard invariant is on `bookings`.
+create index if not exists date_slot_locks_event_date_idx on public.date_slot_locks(event_date);
+create index if not exists date_slot_locks_expires_idx    on public.date_slot_locks(expires_at);
 
 alter table public.date_slot_locks enable row level security;
 -- No public policies — locks are backend/service-role only.

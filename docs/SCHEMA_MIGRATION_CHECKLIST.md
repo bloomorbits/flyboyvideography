@@ -143,6 +143,17 @@ vs what's proposed.
 
 ## Failure modes this rule does NOT catch
 
+- **Non-IMMUTABLE functions in index predicates** — Postgres rejects
+  these at CREATE INDEX time with `42P17 "functions in index predicate
+  must be marked IMMUTABLE"`. Common trap: using `now()`, `current_date`,
+  `current_timestamp`, or any `timestamptz` comparison against them in
+  a partial index `WHERE`. These are STABLE, not IMMUTABLE. The
+  introspection check catches this only after the failure — it can't
+  prevent the initial mistake. Rule of thumb when drafting migrations:
+  if a partial index predicate references time, it will fail. Move the
+  time filter to application-layer queries, or use an explicit boolean
+  column that's maintained on write.
+
 - Rename-in-place (drop-and-recreate with same name but different type / constraints)
   — the OpenAPI spec only lists column names, not types or nullability
   in usable detail. If you're doing something more subtle than
