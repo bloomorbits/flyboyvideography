@@ -131,7 +131,7 @@ vs what's proposed.
 | `003` audit backfill | yes (user confirmed 2026-02) | yes — backfilled + note columns present | Client B backfilled record correctly tagged. |
 | `004` client phone | yes (user confirmed 2026-02) | yes — clients.phone present | RLS self-update policy left intact. |
 | `005` revision rounds | yes (user confirmed 2026-02) | yes — 5 new columns on deliverables | `exceeds_included_rounds` is computed at query/app layer, not stored. |
-| `006` booking flow (payment_transactions, date_slot_locks, booking_intents + bookings columns + unique partial index) | **NOT YET APPLIED** as of drafting | pending | This is the migration whose introspection failure produced this document. When the user applies it and replies "006 applied", verify with the check block above and update this row. |
+| `006` booking flow (payment_transactions, date_slot_locks, booking_intents + bookings columns + unique partial index) | yes (user confirmed 2026-02, self-verified event_date + 3 other new columns) | yes — 3 new tables PRESENT (0 rows each), bookings=15 cols with all 4 new cols PRESENT | Second-attempt success. First attempt failed on a partial unique index using `now()` in predicate (Postgres 42P17: non-IMMUTABLE function in index predicate); fixed by dropping the time-based predicate on `date_slot_locks` and moving that filter to the application layer. The hard double-booking guarantee is `bookings_one_confirmed_per_date` (uses `status='confirmed'`, immutable). The 42P17 trap is now called out in the "Failure modes this rule does NOT catch" section. |
 
 ## Failure modes this rule catches
 
