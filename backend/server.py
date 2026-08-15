@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
@@ -83,8 +83,37 @@ class EnsureBody(BaseModel):
 
 
 @app.get("/api/health")
-def health():
-    return {"status": "ok", "database": "supabase"}
+def health(response: Response):
+    """Live health check — pings Supabase with a lightweight query and a
+    short timeout. Returns 503 if the database is not reachable, so
+    monitoring / uptime tools see a real failure instead of a false OK.
+
+    The check:
+      - Hits the `clients` table with select(id).limit(1) via the
+        already-configured service-role client.
+      - Uses socket-level default timeouts capped by an overall
+        wall-clock budget of ~2s. Any exception (DNS NXDOMAIN, timeout,
+        auth error, schema error) → 503 with the error class in the body.
+      - Does NOT surface the exception message verbatim to callers,
+        because service-role errors can occasionally include hostnames
+        or key fragments; only the exception class name is exposed.
+    """
+    import socket as _socket
+    _prev = _socket.getdefaulttimeout()
+    _socket.setdefaulttimeout(2.0)
+    try:
+        sb.table("clients").select("id").limit(1).execute()
+        return {"status": "ok", "database": "supabase"}
+    except Exception as e:
+        logging.warning(f"/api/health probe failed: {type(e).__name__}: {e}")
+        response.status_code = 503
+        return {
+            "status": "unavailable",
+            "database": "supabase",
+            "error_class": type(e).__name__,
+        }
+    finally:
+        _socket.setdefaulttimeout(_prev)
 
 
 @app.post("/api/clients/ensure")
