@@ -19,7 +19,46 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 ADMIN_EMAILS = [e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()]
 
-sb = create_client(SUPABASE_URL, SERVICE_KEY)
+# Boot-time Supabase client init — hardened so a bad config produces a
+# clear, diagnosable failure via /api/health rather than a silent
+# import-time crash that supervisor loops on.
+#
+# Contract:
+#   - `sb` is either a live create_client() result, or None.
+#   - `SB_INIT_ERROR` carries the reason string when sb is None.
+#   - Any endpoint that touches Supabase must go through get_sb(),
+#     which returns 503 with a clear diagnostic if init failed.
+#   - /api/health reports the boot state without needing sb.
+sb = None
+SB_INIT_ERROR = None
+
+_missing = [
+    name for name, val in (
+        ("SUPABASE_URL", SUPABASE_URL),
+        ("SUPABASE_SERVICE_ROLE_KEY", SERVICE_KEY),
+    ) if not val
+]
+if _missing:
+    SB_INIT_ERROR = (
+        f"Missing required env var(s): {', '.join(_missing)}. "
+        f"Set them in backend/.env (or the deployment env store) and restart."
+    )
+    logging.error("Supabase client NOT initialized — %s", SB_INIT_ERROR)
+else:
+    try:
+        sb = create_client(SUPABASE_URL, SERVICE_KEY)
+    except Exception as _e:
+        SB_INIT_ERROR = f"create_client() failed: {type(_e).__name__}: {_e}"
+        logging.error("Supabase client NOT initialized — %s", SB_INIT_ERROR)
+
+
+def get_sb():
+    """Access the Supabase client from a request handler. Raises a
+    503 with the boot diagnostic if init failed, so callers see a
+    clear cause instead of an AttributeError on None."""
+    if sb is None:
+        raise HTTPException(503, f"Backend not initialized: {SB_INIT_ERROR}")
+    return sb
 
 app = FastAPI(title="Flyboy Videography Portal API")
 app.add_middleware(
@@ -85,19 +124,18 @@ class EnsureBody(BaseModel):
 @app.get("/api/health")
 def health(response: Response):
     """Live health check — pings Supabase with a lightweight query and a
-    short timeout. Returns 503 if the database is not reachable, so
-    monitoring / uptime tools see a real failure instead of a false OK.
-
-    The check:
-      - Hits the `clients` table with select(id).limit(1) via the
-        already-configured service-role client.
-      - Uses socket-level default timeouts capped by an overall
-        wall-clock budget of ~2s. Any exception (DNS NXDOMAIN, timeout,
-        auth error, schema error) → 503 with the error class in the body.
-      - Does NOT surface the exception message verbatim to callers,
-        because service-role errors can occasionally include hostnames
-        or key fragments; only the exception class name is exposed.
+    short timeout. Returns 503 if the database is not reachable or the
+    backend never initialized, so monitoring / uptime tools see a real
+    failure instead of a false OK.
     """
+    if sb is None:
+        response.status_code = 503
+        return {
+            "status": "unavailable",
+            "database": "supabase",
+            "error_class": "ConfigError",
+            "detail": SB_INIT_ERROR,
+        }
     import socket as _socket
     _prev = _socket.getdefaulttimeout()
     _socket.setdefaulttimeout(2.0)
