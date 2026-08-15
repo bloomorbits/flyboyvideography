@@ -142,4 +142,70 @@ renamed or removed, update the `CANARY_PATH` variable in
 
 | Date | Credential | Ticket / reason | Verified preview | Verified deploy | Notes |
 |:-----|:-----------|:----------------|:-----------------|:----------------|:------|
-| 2026-02 | Supabase service-role | GitHub push-protection block on hardcoded test-file literal; history rewritten; provider key rotated | yes (post backend restart) | pending user | Backend needed manual `supervisorctl restart` in preview — hot-reload does not re-read `.env`. |
+| 2026-02 | Supabase service-role | GitHub push-protection block on hardcoded test-file literal; history rewritten; provider key rotated | yes (post backend restart) | yes (via /api/admin/erasure-audit canary) | Backend needed manual `supervisorctl restart` in preview — hot-reload does not re-read `.env`. |
+| 2026-02 | Stripe sandbox provisioned | Phase 1 booking flow — claimable sandbox `acct_1U4cyqEemFmdl6rE`, job_id below | yes (backend restarted, /api/health returned 200) | not yet deployed | Test mode only. Not yet claimed to a live Stripe account (deferred until client is ready — see Ownership handoff section). |
+
+## Stripe sandbox (provisioned 2026-02)
+
+
+The Stripe integration uses an Emergent-managed **claimable sandbox**.
+Key identifiers you will need if you ever have to re-provision, tear
+down, or hand ownership to the client:
+
+| Field | Value |
+|:------|:------|
+| Sandbox job_id (idempotent — POST-ing again returns the same sandbox) | `dc553f4d-1789-490a-8367-9a077316a503` |
+| Stripe sandbox account_id | `acct_1U4cyqEemFmdl6rE` |
+| Onboarding URL (single-use — click to claim as a real live Stripe account) | See `/tmp/onboarding_url.txt` in the preview pod after provisioning, or ask the agent to re-fetch via a status GET |
+| Env vars auto-injected on provision | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_ACCOUNT_ID`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_MODE=test` |
+
+### Ownership handoff (going live)
+
+The sandbox has no legal owner until someone clicks `onboarding_url`
+and completes Stripe KYC (business details + bank + ID). Per the
+project's ownership rule: **only the client should click that URL** —
+they become the Stripe account holder in their own name. Neither
+Bloom Orbit nor the agent should ever complete KYC on this sandbox.
+
+When KYC completes, Stripe auto-promotes the sandbox test data
+structure to a live account, the platform triggers a redeployment that
+swaps sandbox keys for live keys, and `STRIPE_MODE` flips from `test`
+to `live`. Nothing to change in code.
+
+### Teardown / re-provision
+
+The `job_id` above is idempotent — POST-ing to `/stripe/sandboxes`
+again with it returns the **existing** sandbox, never a duplicate. If
+a full reset is genuinely needed (destructive — loses all catalog /
+products / prices):
+
+1. Ask the user first via `ask_human` — never DELETE on assumption.
+2. `DELETE {INTEGRATION_PROXY_URL}/stripe/jobs/dc553f4d-1789-490a-8367-9a077316a503/sandbox`
+   with the same bearer key used at provision time.
+3. Remove all `STRIPE_*` values from `backend/.env` in the same turn.
+4. Either drop Stripe code entirely, or POST again to get a fresh
+   sandbox and re-run catalog setup. Do NOT leave the app in a
+   half-deleted state.
+
+### Tax mode revisit triggers
+
+Current tax mode is **DIY** — Stripe processes the payment, we
+handle tax filing ourselves. Chosen because the client is not
+VAT-registered as of 2026-02 and UK event videography services below
+the £90k threshold don't need VAT collection at checkout.
+
+**Flip to `calc_only` (Stripe calculates tax at checkout, +0.5%/txn)
+when any of the following becomes true:**
+
+- Client turnover approaches / crosses the UK VAT threshold (£90k as
+  of 2026, verify current threshold at
+  https://www.gov.uk/vat-registration/how-to-register).
+- Client voluntarily registers for VAT (some businesses do this
+  below-threshold to reclaim input VAT).
+- Client starts selling into other EU/UK-adjacent tax jurisdictions
+  where OSS/IOSS or equivalent applies.
+
+The tax mode switch is a small code change (one branch in the
+`create_checkout_session` call) plus enabling Stripe Tax in the
+Stripe Dashboard. The change point is marked in code with a
+`TAX MODE` comment near the `stripe.checkout.Session.create(...)` call.
