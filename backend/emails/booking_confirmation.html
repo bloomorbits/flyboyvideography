@@ -1,102 +1,106 @@
 <!--
   Booking confirmation email — sent by /api/stripe/webhook once payment is verified.
   Voice: plain-English, direct-benefit register (matches the public site).
-  Placeholder variables (double-braced) are filled at send time from the booking_intent row:
-    {{first_name}}   — from full_name, first word only, fallback "there"
-    {{package_title}} — e.g. "Wedding Videography"
-    {{tier_name}}    — e.g. "Classic" (falls back to empty string if the package is single-tier)
-    {{event_date}}   — e.g. "Saturday, 12 July 2026" (formatted server-side, not raw ISO)
-    {{deposit_paid}} — e.g. "£200.00"
-    {{balance_due}}  — e.g. "£200.00"
-    {{balance_due_by}} — e.g. "9 July 2026" (event_date - 3 days)
-    {{invite_url}}   — Supabase-generated single-use, time-limited invite/set-password link
-    {{event_notes}}  — the free-text notes the visitor entered, or empty
+
+  Placeholder variables (double-braced) are composed server-side from the
+  booking_intent + payment_transaction row at send time:
+
+    {{first_name}}          — first word of full_name, fallback "there"
+    {{package_title}}       — e.g. "Wedding Videography"
+    {{tier_suffix}}         — " — Classic" for multi-tier packages, "" for single-tier
+    {{event_date}}          — e.g. "Saturday, 12 July 2026" (formatted, not raw ISO)
+    {{deposit_paid}}        — e.g. "£200.00"
+    {{balance_due}}         — e.g. "£200.00"
+    {{balance_due_by}}      — e.g. "9 July 2026" (event_date - 3 days)
+    {{invite_url}}          — Supabase-generated single-use invite link
+    {{your_details_block}}  — server composes conditionally:
+                              - empty string if phone AND notes both empty
+                              - a bordered card with ONLY the fields provided,
+                                so a client who supplied only notes doesn't see
+                                a "Phone: (none)" placeholder line.
+                              Composer pseudocode in the webhook:
+                                parts = []
+                                if intent.phone:  parts.append('<p>Phone: <strong>{phone}</strong></p>')
+                                if intent.notes:  parts.append('<p style="white-space:pre-wrap;">Your notes: <br />{notes}</p>')
+                                return '' if not parts else '<table …>{header}{parts}</table>'
+                              HTML-escape all user input before insertion.
 -->
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Your booking is confirmed — Flyboy Videography</title>
-  </head>
-  <body style="margin:0;padding:0;background:#faf8f4;font-family:Inter,Arial,sans-serif;color:#17140f;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-      <tr>
-        <td align="center" style="padding:32px 20px;">
-          <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;">
-            <tr>
-              <td style="padding:0 0 24px 0;">
-                <p style="margin:0;font-family:'Space Grotesk',Arial,sans-serif;font-size:18px;font-weight:700;letter-spacing:0.02em;">
-                  FLYBOY<span style="opacity:0.4;">/</span>VIDEOGRAPHY
-                </p>
-              </td>
-            </tr>
-            <tr>
-              <td style="background:#ffffff;border:1px solid #e9e1d2;border-radius:12px;padding:36px 32px;">
-                <p style="margin:0 0 6px 0;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.3em;text-transform:uppercase;color:#6b6558;">
-                  Booking confirmed
-                </p>
-                <h1 style="margin:0 0 20px 0;font-family:'Space Grotesk',Arial,sans-serif;font-size:26px;line-height:1.25;font-weight:700;">
-                  Your date is locked in, {{first_name}}.
-                </h1>
-                <p style="margin:0 0 20px 0;font-size:15px;line-height:1.55;">
-                  Thanks for booking with Flyboy Videography. Your <strong>{{package_title}}{{tier_suffix}}</strong> package is confirmed for <strong>{{event_date}}</strong>. Deposit received, date is now yours.
-                </p>
+<head><meta charset="UTF-8" /><title>Your booking is confirmed — Flyboy Videography</title></head>
+<body style="margin:0;padding:0;background:#faf8f4;font-family:Inter,Arial,sans-serif;color:#17140f;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center" style="padding:32px 20px;">
+<table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;">
+  <tr><td style="padding:0 0 24px 0;">
+    <p style="margin:0;font-family:'Space Grotesk',Arial,sans-serif;font-size:18px;font-weight:700;letter-spacing:0.02em;">
+      FLYBOY<span style="opacity:0.4;">/</span>VIDEOGRAPHY
+    </p>
+  </td></tr>
 
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;background:#faf8f4;border:1px solid #e9e1d2;border-radius:8px;">
-                  <tr>
-                    <td style="padding:18px 20px;">
-                      <p style="margin:0 0 6px 0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.25em;text-transform:uppercase;color:#6b6558;">Payment summary</p>
-                      <p style="margin:0 0 4px 0;font-size:14px;">Deposit paid today: <strong>{{deposit_paid}}</strong></p>
-                      <p style="margin:0;font-size:14px;">Balance <strong>{{balance_due}}</strong> due by <strong>{{balance_due_by}}</strong> (3 days before your event).</p>
-                    </td>
-                  </tr>
-                </table>
+  <tr><td style="background:#ffffff;border:1px solid #e9e1d2;border-radius:12px;padding:36px 32px;">
+    <p style="margin:0 0 6px 0;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.3em;text-transform:uppercase;color:#6b6558;">
+      Booking confirmed
+    </p>
+    <h1 style="margin:0 0 20px 0;font-family:'Space Grotesk',Arial,sans-serif;font-size:26px;line-height:1.25;font-weight:700;">
+      Your date is locked in, {{first_name}}.
+    </h1>
+    <p style="margin:0 0 20px 0;font-size:15px;line-height:1.55;">
+      Thanks for booking with Flyboy Videography. Your <strong>{{package_title}}{{tier_suffix}}</strong> package is confirmed for <strong>{{event_date}}</strong>. Deposit received, date is now yours.
+    </p>
 
-                <p style="margin:0 0 12px 0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.25em;text-transform:uppercase;color:#6b6558;">
-                  Set up your portal access
-                </p>
-                <p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;">
-                  We've created a client portal account for you where you'll review your films, approve cuts and pay the balance closer to the day. Set your password using the link below (valid for 24 hours):
-                </p>
-                <p style="margin:0 0 26px 0;">
-                  <a href="{{invite_url}}" style="display:inline-block;background:#17140f;color:#faf8f4;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:600;font-size:14px;">
-                    Set your portal password →
-                  </a>
-                </p>
-
-                <p style="margin:0 0 12px 0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.25em;text-transform:uppercase;color:#6b6558;">What happens next</p>
-                <ol style="margin:0 0 20px 20px;padding:0;font-size:14px;line-height:1.6;color:#3a352c;">
-                  <li>We'll email a short questionnaire about the day 2–3 weeks out — running order, key people, any must-capture moments.</li>
-                  <li>Balance invoice lands 5–7 days before the event.</li>
-                  <li>On the day, we're on-site for your booked hours (see the package details on the site).</li>
-                  <li>Films drop in your portal within the delivery window on your package.</li>
-                </ol>
-
-                <p style="margin:24px 0 0 0;font-size:14px;line-height:1.55;color:#3a352c;">
-                  Anything to add, ask, or change — just reply to this email. We read every one.
-                </p>
-              </td>
-            </tr>
-
-            <tr>
-              <td style="padding:24px 4px 8px 4px;font-size:12px;color:#6b6558;">
-                <p style="margin:0 0 6px 0;"><strong style="color:#17140f;">Flyboy Videography</strong></p>
-                <p style="margin:0 0 4px 0;">
-                  <a href="mailto:hello@flyboyvideography.com" style="color:#6b6558;text-decoration:underline;">hello@flyboyvideography.com</a> ·
-                  <a href="https://flyboyvideography.com" style="color:#6b6558;text-decoration:underline;">flyboyvideography.com</a>
-                </p>
-                <p style="margin:12px 0 4px 0;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.05em;text-transform:uppercase;">
-                  Built by <a href="https://bloomorbit.tech" style="color:#17140f;text-decoration:underline;text-decoration-style:dotted;">Bloomorbit Studio</a>
-                </p>
-                <p style="margin:8px 0 0 0;font-size:11px;color:#8a8478;">
-                  <a href="https://flyboyvideography.com/privacy" style="color:#8a8478;text-decoration:underline;">Privacy</a> ·
-                  <a href="https://flyboyvideography.com/terms" style="color:#8a8478;text-decoration:underline;">Terms</a>
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;background:#faf8f4;border:1px solid #e9e1d2;border-radius:8px;">
+      <tr><td style="padding:18px 20px;">
+        <p style="margin:0 0 6px 0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.25em;text-transform:uppercase;color:#6b6558;">Payment summary</p>
+        <p style="margin:0 0 4px 0;font-size:14px;">Deposit paid today: <strong>{{deposit_paid}}</strong></p>
+        <p style="margin:0;font-size:14px;">Balance <strong>{{balance_due}}</strong> due by <strong>{{balance_due_by}}</strong> (3 days before your event).</p>
+      </td></tr>
     </table>
-  </body>
+
+    {{your_details_block}}
+
+    <p style="margin:0 0 12px 0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.25em;text-transform:uppercase;color:#6b6558;">
+      Set up your portal access
+    </p>
+    <p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;">
+      We've created a client portal account for you where you'll review your films, approve cuts and pay the balance closer to the day. Set your password using the link below (valid for 24 hours):
+    </p>
+    <p style="margin:0 0 10px 0;">
+      <a href="{{invite_url}}" style="display:inline-block;background:#17140f;color:#faf8f4;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:600;font-size:14px;">
+        Set your portal password →
+      </a>
+    </p>
+    <p style="margin:0 0 26px 0;font-size:12px;line-height:1.55;color:#6b6558;">
+      Link expired? No problem — head to the portal login page and use <strong>&ldquo;Forgot your password?&rdquo;</strong> to get a fresh one instantly. Your account is already set up.
+    </p>
+
+    <p style="margin:0 0 12px 0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.25em;text-transform:uppercase;color:#6b6558;">What happens next</p>
+    <ol style="margin:0 0 20px 20px;padding:0;font-size:14px;line-height:1.6;color:#3a352c;">
+      <li>We'll email a short questionnaire about the day 2–3 weeks out — running order, key people, any must-capture moments.</li>
+      <li>Balance invoice lands 5–7 days before the event.</li>
+      <li>On the day, we're on-site for your booked hours (see the package details on the site).</li>
+      <li>Films drop in your portal within the delivery window on your package.</li>
+    </ol>
+
+    <p style="margin:24px 0 0 0;font-size:14px;line-height:1.55;color:#3a352c;">
+      Anything to add, ask, or change — just reply to this email. We read every one.
+    </p>
+  </td></tr>
+
+  <tr><td style="padding:24px 4px 8px 4px;font-size:12px;color:#6b6558;">
+    <p style="margin:0 0 6px 0;"><strong style="color:#17140f;">Flyboy Videography</strong></p>
+    <p style="margin:0 0 4px 0;">
+      <a href="mailto:hello@flyboyvideography.com" style="color:#6b6558;text-decoration:underline;">hello@flyboyvideography.com</a> ·
+      <a href="https://flyboyvideography.com" style="color:#6b6558;text-decoration:underline;">flyboyvideography.com</a>
+    </p>
+    <p style="margin:12px 0 4px 0;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.05em;text-transform:uppercase;">
+      Built by <a href="https://bloomorbit.tech" style="color:#17140f;text-decoration:underline;text-decoration-style:dotted;">Bloomorbit Studio</a>
+    </p>
+    <p style="margin:8px 0 0 0;font-size:11px;color:#8a8478;">
+      <a href="https://flyboyvideography.com/privacy" style="color:#8a8478;text-decoration:underline;">Privacy</a> ·
+      <a href="https://flyboyvideography.com/terms" style="color:#8a8478;text-decoration:underline;">Terms</a>
+    </p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
 </html>
