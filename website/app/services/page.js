@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { packages, graduation, extras, bookingTerms } from "../../lib/pricing";
 import HeroPlayer from "../components/HeroPlayer";
 import Marquee from "../components/Marquee";
@@ -34,13 +35,10 @@ function enquireHref({ packageTitle, tierName, price, coverage }) {
   return `mailto:hello@flyboyvideography.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
-function TierCard({ tier, hoursOnly, packageTitle }) {
-  const href = enquireHref({
-    packageTitle,
-    tierName: tier.name,
-    price: tier.price,
-    coverage: tier.coverage,
-  });
+function TierCard({ tier, hoursOnly, packageTitle, packageId }) {
+  // Deep-link into /book pre-populating the tier the visitor tapped, so they
+  // arrive on the booking flow with everything but the date already chosen.
+  const bookHref = `/book?package=${encodeURIComponent(packageId)}&tier=${encodeURIComponent(tier.name)}`;
   return (
     <div
       data-testid={`tier-${tier.name.toLowerCase()}`}
@@ -67,8 +65,8 @@ function TierCard({ tier, hoursOnly, packageTitle }) {
           </ul>
         </div>
       )}
-      <a
-        href={href}
+      <Link
+        href={bookHref}
         data-testid={`tier-cta-${tier.name.toLowerCase()}`}
         data-package={packageTitle}
         data-tier={tier.name}
@@ -78,9 +76,9 @@ function TierCard({ tier, hoursOnly, packageTitle }) {
             : "border-ink/20 bg-transparent text-ink hover:border-ink hover:bg-ink hover:text-cream"
         }`}
       >
-        <span>Enquire about {tier.name}</span>
+        <span>Book {tier.name}</span>
         <span aria-hidden className="font-mono">→</span>
-      </a>
+      </Link>
     </div>
   );
 }
@@ -164,7 +162,7 @@ export default function ServicesPage() {
             <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-3">
               {pkg.tiers.map((tier, i) => (
                 <Reveal key={tier.name} delay={i * 100}>
-                  <TierCard tier={tier} hoursOnly={pkg.hoursOnly} packageTitle={pkg.title} />
+                  <TierCard tier={tier} hoursOnly={pkg.hoursOnly} packageTitle={pkg.title} packageId={pkg.id} />
                 </Reveal>
               ))}
             </div>
@@ -229,20 +227,15 @@ export default function ServicesPage() {
                     </li>
                   ))}
                 </ul>
-                <a
-                  href={enquireHref({
-                    packageTitle: graduation.title,
-                    tierName: "",
-                    price: graduation.price,
-                    coverage: graduation.coverage,
-                  })}
+                <Link
+                  href="/book?package=graduation"
                   data-testid="tier-cta-graduation"
                   data-package={graduation.title}
                   className="mt-8 inline-flex w-full items-center justify-between gap-2 rounded-full bg-ink px-5 py-3 text-sm font-medium text-cream transition-colors duration-200 hover:bg-ink/90"
                 >
-                  <span>Enquire about {graduation.title}</span>
+                  <span>Book {graduation.title}</span>
                   <span aria-hidden className="font-mono">→</span>
-                </a>
+                </Link>
               </div>
             </div>
           </Reveal>
@@ -282,13 +275,13 @@ export default function ServicesPage() {
           <Reveal>
             <h2 className="font-display text-2xl font-bold tracking-tight md:text-3xl">Booking terms</h2>
             <p data-testid="booking-terms" className="mt-4 max-w-xl text-lg text-dune">{bookingTerms}</p>
-            <a
-              href="mailto:hello@flyboyvideography.com"
+            <Link
+              href="/book"
               data-testid="services-enquire-cta"
               className="mt-8 inline-block rounded-full bg-cream px-8 py-3 font-medium text-ink transition-opacity hover:opacity-85"
             >
-              Enquire about your date
-            </a>
+              Book your date
+            </Link>
           </Reveal>
         </div>
       </section>

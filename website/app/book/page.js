@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { BOOKABLE_PACKAGES, DEPOSIT_PERCENTAGE, findTier } from "../../lib/booking-packages";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { BOOKABLE_PACKAGES, DEPOSIT_PERCENTAGE, findPackage, findTier } from "../../lib/booking-packages";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
@@ -106,6 +107,15 @@ function DatePicker({ blocked, value, onChange }) {
 }
 
 export default function BookPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-cream pt-24 text-center text-ink/50">Loading…</main>}>
+      <BookPageInner />
+    </Suspense>
+  );
+}
+
+function BookPageInner() {
+  const searchParams = useSearchParams();
   const [step, setStep] = useState(1); // 1 = pick package, 2 = details + pay
   const [packageId, setPackageId] = useState("");
   const [tierName, setTierName] = useState("");
@@ -118,6 +128,25 @@ export default function BookPage() {
   const [availLoading, setAvailLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // Pre-populate from ?package=…&tier=… when the visitor arrived via a
+  // Services page tier CTA. Only runs once on mount; if the URL specifies
+  // a nonsense package we silently ignore and leave the flow empty.
+  const prefilledOnce = useRef(false);
+  useEffect(() => {
+    if (prefilledOnce.current) return;
+    prefilledOnce.current = true;
+    const qp = searchParams.get("package");
+    const qt = searchParams.get("tier") ?? "";
+    if (!qp) return;
+    const pkg = findPackage(qp);
+    if (!pkg) return;
+    setPackageId(pkg.id);
+    // If the tier query param is missing or doesn't match, fall back to the
+    // first tier (safe default — every package has at least one).
+    const wantedTier = pkg.tiers.find((t) => t.name === qt);
+    setTierName((wantedTier || pkg.tiers[0]).name);
+  }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;
