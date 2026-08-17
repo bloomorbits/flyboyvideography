@@ -358,3 +358,54 @@ No live-mode Stripe traffic until PL-INFRA-1 (XFF strip) AND PL-INFRA-2
 - P2: Deliverable 90-day expiry + warning email.
 - P2: Deliverable access/download logging.
 - P2: T&Cs acceptance timestamp + IP capture at booking.
+
+
+## Next-session pickup (fresh-context reference, 2026-02)
+
+Tonight's work covered Phase 1 booking flow + full security hardening +
+public contact form + admin security dashboard. Everything shipped is
+verified end-to-end (10/10 pytests, real 429s persisted, admin dashboard
+smoke-tested with real admin bearer). Backlog items no longer relevant
+(struck through below) — these have been DONE this session:
+
+- ~~P1: Public contact form (Resend) replacing mailto: links~~ — DONE
+  (Batch 1 · session 9, third pass). Migration 009 applied.
+
+The remaining backlog, ordered as the user directed at end of session 9:
+
+1. **P1 · Retainer Schema Design** — sketch `retainers` / `subscriptions`
+   table + Stripe Subscription price IDs so Phase 2 has a clean
+   foundation. Fresh design decision; do NOT tack onto an existing
+   migration. Introspect first (SCHEMA_MIGRATION_CHECKLIST rule).
+2. **P1 · Retainer Signup Flow** — `/retain` page with tier picker +
+   monthly Stripe Subscription checkout + portal integration for
+   subscribers. Blocked on #1.
+3. **P1 · Portal Restyle** — migrate CRA portal from dark/cyan to the
+   cream/ink public-site design system so clients get one visual
+   identity. Big enough to warrant `design_agent_full_stack` before
+   touching code.
+4. **P2 · Enquiry Inbox** — Studio admin view listing
+   `contact_enquiries` (status: new/replied/archived) so submissions
+   don't just sit in email. Backend read endpoint + a new tab in the
+   admin dashboard.
+5. **P2 · Enquiry Auto-Reply** — immediate "we've got it, will reply
+   within one working day" acknowledgement to the enquirer so they
+   don't wonder if the form worked.
+
+### HARD GATES (do not skip when picking up)
+- **PL-INFRA-1 + PL-INFRA-2** unresolved — no live-mode Stripe traffic
+  until BOTH are verified fixed on the receiving deployment. See
+  `/app/docs/CREDENTIAL_ROTATION.md` § "Pre-launch infra tasks".
+- **SEC-002-residual** still open, fully contingent on PL-INFRA-1. Not
+  a separate launch blocker; automatically closed when PL-INFRA-1 is.
+- **Migration 010** will be needed for retainers. Follow the pattern
+  from 006-009: file at `/app/supabase_migration_010_*.sql`, user
+  applies manually in the Supabase SQL Editor, agent introspects to
+  verify BEFORE writing any code that depends on the schema.
+
+### Provider account state
+- Stripe: sandbox provisioned, still pre-KYC. Live-mode promotion is a
+  post-PL-INFRA-1+2 milestone.
+- Resend: transactional-only usage (booking confirmation + contact
+  notification). `CONTACT_TO_EMAIL` env defaults to `ADMIN_EMAIL`.
+- Supabase: migrations 006-009 all applied and verified.
