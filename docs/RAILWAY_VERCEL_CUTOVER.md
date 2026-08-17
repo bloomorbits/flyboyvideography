@@ -6,10 +6,18 @@
 
 | Env | Service | URL | Notes |
 |:----|:--------|:----|:------|
-| Prod | FastAPI backend (Railway) | `https://flyboyvideography.up.railway.app` | Railpack builder, `/backend` root dir, Procfile-driven, PORT 8080 target |
+| Prod | FastAPI backend (Railway) | `https://flyboyvideography-production.up.railway.app` | Railpack builder, `/backend` root dir, Procfile-driven, PORT 8080 target. **Use the `-production` auto-generated domain, NOT a custom short domain** — the custom-short variant drifted out of sync on redeploy during initial cutover (2026-02) and was retired. See "Domain gotcha" below. |
 | Prod | Next.js public site (Vercel) | `https://flyboyvideography.vercel.app` + custom `flyboyvideography.com` | Existing — needs `NEXT_PUBLIC_API_BASE` updated in Step 12 |
 | Prod | CRA client portal (Vercel) | *pending Step 9* | Will be `https://<subdomain>.vercel.app` |
 | Legacy | Preview pod | `https://db-bridge-5.preview.emergentagent.com` | Retire after Step 13 confirms end-to-end on prod |
+
+### Domain gotcha (2026-02 lesson learned)
+
+Railway auto-generates a default domain when the service is created: `<service>-<environment>.up.railway.app` (e.g. `flyboyvideography-production.up.railway.app`). This domain is **wired to the correct target port by Railway itself**, survives redeploys, and never drifts.
+
+The "Generate Service Domain" wizard also offers to create a **second, custom short-name domain** (e.g. `flyboyvideography.up.railway.app`). It looks like a cleaner alternative but is a separate domain record whose target port can drift out of sync on redeploy. During the 2026-02 cutover, adding `STRIPE_WEBHOOK_SECRET` and redeploying appeared to knock the custom-short domain's target port off — the `-production` domain kept serving, the custom-short one started returning Railway's "train has not arrived at the station" 502 page for ~15 minutes.
+
+**Rule:** Always use the `-<env>.up.railway.app` auto-generated domain as the canonical service URL. Only use the "Generate Service Domain" wizard when you need a CUSTOM DOMAIN CNAME (e.g. `api.flyboyvideography.com`) — not for a shorter-but-still-`railway.app` alias. The short alias is a footgun with no upside once you're on your real custom domain anyway.
 
 ## Repo ownership context (2026-02)
 
