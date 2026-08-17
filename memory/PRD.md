@@ -281,6 +281,38 @@ No live-mode Stripe traffic until PL-INFRA-1 (XFF strip) AND PL-INFRA-2
 (CORS override) are verified resolved on the receiving deployment.
 
 
+## Batch 1 (contact + admin security) — session 9, third pass
+- **Public contact form live at `/contact`** — two-column form (name, email,
+  package interest prefilled from `?package=`, event date, message) → POST
+  `/api/contact/enquire` → row in `contact_enquiries` + Resend email to
+  `CONTACT_TO_EMAIL` (defaults to `ADMIN_EMAIL`). Success state has explicit
+  next-step CTAs back to /services and /book.
+- **Independent rate-limit ledger** — `contact_attempts` (migration 009),
+  deliberately separate from booking's `checkout_attempts` per user directive
+  ("different threat models deserve independent tuning"). Layered caps:
+  per-email 5/15min · per-IP 8/15min · global 200/15min. Same atomic
+  insert-then-count pattern as `booking.py`. 429s persist to `rate_limit_events`
+  with the `contact_*` prefix so the admin dashboard slices them separately.
+- **Mailto sweep on conversion paths** — replaced across services, portfolio,
+  home, book/cancel, FAQ. Services `enquireHref` helper deleted (dead code).
+  Privacy Policy keeps `hello@flyboyvideography.com` as plain non-clickable
+  text per user directive (GDPR requests need a deliberate, formal path,
+  not a routing-to-inbox contact form).
+- **Contact nav link** added to SiteHeader (hidden on mobile, keeps Book
+  as the primary CTA visually).
+- **Admin `/admin/security` dashboard** — new route in CRA portal, admin-only.
+  Reads last 100 events from `GET /api/admin/rate-limit-events`. Suspect-email
+  search via `POST /api/admin/rate-limit-events/search` hashes plaintext email
+  server-side (never stored) and returns matching events. Event reasons are
+  human-labelled and colour-toned by severity (global = red, per-source =
+  amber, contact = cyan). Sidebar entry with a distinct `ShieldAlert` icon
+  next to the existing Admin entry. `d3` (clear-attacker action) deferred
+  per user directive — destructive admin actions get their own guarded
+  treatment later.
+- **Migration 009 applied and verified** — `contact_enquiries` +
+  `contact_attempts` with RLS-enabled/no-policies (same posture as 007/008).
+
+
 
 ## Implemented (Feb 2026) — session 9 (Phase 1 Booking Flow)
 - Client-facing project booking (one-off, non-retainer) live on public Next.js

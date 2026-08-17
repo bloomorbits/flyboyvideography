@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from supabase import create_client
 
 load_dotenv(Path(__file__).parent / ".env")
@@ -81,6 +81,10 @@ app.add_middleware(
 # Client-facing booking flow (Phase 1) — see booking.py
 from booking import router as booking_router  # noqa: E402
 app.include_router(booking_router)
+
+# Public contact / enquiry form — see contact.py
+from contact import router as contact_router  # noqa: E402
+app.include_router(contact_router)
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -573,3 +577,54 @@ def admin_purge_seed_data(body: PurgeBody, admin=Depends(require_admin)):
         "skipped_clients_with_real_records": skipped_records,
         "audit_log": "erasure_audit_log preserved (compliance record)",
     }
+
+
+# ---------- Admin security dashboard endpoints (rate_limit_events) ----------
+
+import hashlib as _hashlib  # noqa: E402
+
+
+def _hash_email_for_search(email: str) -> str:
+    """Same truncation as booking.py::_hash_email — must stay in sync so
+    the search endpoint returns the events that _log_bypass_forensics
+    recorded for the given plaintext email."""
+    return _hashlib.sha256((email or "").strip().lower().encode()).hexdigest()[:16]
+
+
+@app.get("/api/admin/rate-limit-events")
+def list_rate_limit_events(limit: int = 100, user=Depends(require_admin)):
+    """Return the most recent N rate-limit events. Read-only.
+
+    Migration 008 must be applied; if not, an empty list is returned and
+    an operational note is logged — the UI stays functional but empty.
+    """
+    limit = max(1, min(500, limit))
+    try:
+        r = sb.table("rate_limit_events").select(
+            "id, reason, email_hash, ip, x_forwarded_for, x_real_ip, user_agent, created_at"
+        ).order("created_at", desc=True).limit(limit).execute()
+        return {"events": r.data or [], "limit": limit}
+    except Exception as e:
+        logging.info("rate_limit_events read skipped: %s", e)
+        return {"events": [], "limit": limit, "note": "rate_limit_events table not available"}
+
+
+class RateLimitSearchBody(BaseModel):
+    email: EmailStr
+
+
+@app.post("/api/admin/rate-limit-events/search")
+def search_rate_limit_events_by_email(body: RateLimitSearchBody, user=Depends(require_admin)):
+    """Suspect-email lookup: caller pastes plaintext email, server hashes
+    it (same algo as _log_bypass_forensics), returns matching events.
+    The plaintext email is NEVER stored — only hashed on the wire, hashed
+    at rest. That's the whole GDPR posture."""
+    ehash = _hash_email_for_search(str(body.email))
+    try:
+        r = sb.table("rate_limit_events").select(
+            "id, reason, email_hash, ip, x_forwarded_for, x_real_ip, user_agent, created_at"
+        ).eq("email_hash", ehash).order("created_at", desc=True).limit(500).execute()
+        return {"email_hash": ehash, "events": r.data or [], "count": len(r.data or [])}
+    except Exception as e:
+        logging.info("rate_limit_events search skipped: %s", e)
+        return {"email_hash": ehash, "events": [], "count": 0, "note": "rate_limit_events table not available"}

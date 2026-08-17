@@ -38,11 +38,7 @@ export default function PrivacyPage() {
             videography studio. This policy explains how we handle personal
             information collected through this website and through our booking,
             delivery and client-portal workflows. For any privacy question,
-            contact{" "}
-            <a href="mailto:hello@flyboyvideography.com" className="underline underline-offset-4">
-              hello@flyboyvideography.com
-            </a>
-            .
+            email <span className="font-mono text-ink" data-testid="privacy-contact-email">hello@flyboyvideography.com</span>.
           </p>
 
           <h2 className="mt-8 font-display text-xl font-bold">What we collect</h2>
@@ -151,9 +147,7 @@ export default function PrivacyPage() {
             restrict, port or object to our use of your personal data, and to
             withdraw consent where we rely on it. To exercise any right, email
             {" "}
-            <a href="mailto:hello@flyboyvideography.com" className="underline underline-offset-4">
-              hello@flyboyvideography.com
-            </a>
+            <span className="font-mono text-ink" data-testid="privacy-gdpr-email">hello@flyboyvideography.com</span>
             . You also have the right to complain to the ICO
             (<a href="https://ico.org.uk" target="_blank" rel="noreferrer" className="underline underline-offset-4">ico.org.uk</a>).
           </p>

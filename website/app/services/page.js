@@ -14,27 +14,6 @@ export const metadata = {
 const gbp = (n) => `£${n}`;
 const CATEGORIES = ["Weddings", "Birthdays", "Naming Ceremonies", "Gender Reveals", "Lifestyle", "Graduations", "Extra Reels"];
 
-// Builds a mailto link pre-filled with the package + tier the visitor tapped.
-// Kept as a mailto for now — swaps to the enquiry form Route Handler once the
-// contact-form task lands (per PRD backlog).
-function enquireHref({ packageTitle, tierName, price, coverage }) {
-  const subject = tierName
-    ? `Enquiry — ${packageTitle} · ${tierName} (${gbp(price)})`
-    : `Enquiry — ${packageTitle} (${gbp(price)})`;
-  const body = [
-    `Hi Flyboy,`,
-    ``,
-    `I'd like to enquire about the ${packageTitle}${tierName ? ` — ${tierName}` : ""} package (${gbp(price)}, ${coverage}).`,
-    ``,
-    `Event date:`,
-    `Location:`,
-    `A bit about the event:`,
-    ``,
-    `Thanks.`,
-  ].join("\n");
-  return `mailto:hello@flyboyvideography.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-}
-
 function TierCard({ tier, hoursOnly, packageTitle, packageId }) {
   // Deep-link into /book pre-populating the tier the visitor tapped, so they
   // arrive on the booking flow with everything but the date already chosen.
@@ -177,26 +156,14 @@ export default function ServicesPage() {
                   Not sure which tier fits? Start a conversation and we&rsquo;ll
                   recommend the right {pkg.title.toLowerCase()} package for your event.
                 </p>
-                <a
-                  href={`mailto:hello@flyboyvideography.com?subject=${encodeURIComponent(`Enquiry — ${pkg.title}`)}&body=${encodeURIComponent(
-                    [
-                      `Hi Flyboy,`,
-                      ``,
-                      `I'd like to enquire about the ${pkg.title} package.`,
-                      ``,
-                      `Event date:`,
-                      `Location:`,
-                      `A bit about the event:`,
-                      ``,
-                      `Thanks.`,
-                    ].join("\n")
-                  )}`}
+                <Link
+                  href={`/contact?package=${encodeURIComponent(pkg.id)}`}
                   data-testid={`package-cta-${pkg.id}`}
                   data-package={pkg.title}
                   className="inline-flex flex-shrink-0 items-center gap-2 rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-cream hover:bg-ink/90"
                 >
                   Enquire about this package <span aria-hidden className="font-mono">→</span>
-                </a>
+                </Link>
               </div>
             </Reveal>
           </div>

@@ -25,12 +25,12 @@ export default function CancelPage() {
           >
             Back to booking →
           </Link>
-          <a
-            href="mailto:hello@flyboyvideography.com"
+          <Link
+            href="/contact"
             className="inline-flex items-center gap-2 rounded-full border border-ink/25 px-5 py-3 text-sm font-medium text-ink hover:border-ink"
           >
-            Email us instead
-          </a>
+            Send us a note instead
+          </Link>
         </div>
       </div>
     </main>

@@ -42,6 +42,9 @@ export default function SiteHeader() {
           <Link href="/faq" data-testid="nav-faq" className="underline-offset-4 hover:underline">
             FAQ
           </Link>
+          <Link href="/contact" data-testid="nav-contact" className="hidden underline-offset-4 hover:underline md:inline">
+            Contact
+          </Link>
           <Link
             href="/book"
             data-testid="nav-book"

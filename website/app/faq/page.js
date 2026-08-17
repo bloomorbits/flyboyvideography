@@ -68,12 +68,12 @@ export default function FaqPage() {
         <p className="mt-4 max-w-xl text-ink/70">
           Straight answers on pricing, deposits, timelines and cancellations.
           If your question isn&rsquo;t here, just{" "}
-          <a
-            href="mailto:hello@flyboyvideography.com"
+          <Link
+            href="/contact"
             className="underline decoration-dotted underline-offset-4 hover:decoration-solid"
           >
             drop us a line
-          </a>
+          </Link>
           .
         </p>
 
@@ -110,13 +110,13 @@ export default function FaqPage() {
             reply with a specific recommendation.
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
-            <a
-              href="mailto:hello@flyboyvideography.com"
+            <Link
+              href="/contact"
               data-testid="faq-enquire-cta"
               className="rounded-full bg-ink px-6 py-2.5 text-sm font-medium text-cream hover:bg-ink/90"
             >
               Enquire
-            </a>
+            </Link>
             <Link
               href="/services"
               data-testid="faq-services-link"

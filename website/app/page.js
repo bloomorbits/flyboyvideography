@@ -72,13 +72,13 @@ export default function Home() {
                 >
                   Read the FAQ <span aria-hidden className="font-mono">→</span>
                 </Link>
-                <a
-                  href="mailto:hello@flyboyvideography.com"
+                <Link
+                  href="/contact"
                   data-testid="home-enquire-link"
                   className="inline-flex items-center gap-2 px-1 py-1 text-sm font-medium text-ink underline decoration-dotted underline-offset-4 hover:decoration-solid"
                 >
-                  hello@flyboyvideography.com
-                </a>
+                  Send us an enquiry
+                </Link>
               </div>
             </Reveal>
           </div>

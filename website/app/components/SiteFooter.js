@@ -71,13 +71,13 @@ export default function SiteFooter() {
               Serving {SERVICE_AREA}
             </p>
             <p className="mt-4 text-sm">
-              <a
-                href="mailto:hello@flyboyvideography.com"
-                data-testid="footer-email-link"
+              <Link
+                href="/contact"
+                data-testid="footer-contact-link"
                 className="underline decoration-dotted underline-offset-4 hover:decoration-solid"
               >
-                hello@flyboyvideography.com
-              </a>
+                Send us an enquiry →
+              </Link>
             </p>
 
             <div className="mt-6 flex items-center gap-3">

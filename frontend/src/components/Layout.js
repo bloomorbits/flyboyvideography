@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, Clapperboard, Repeat, Film, Receipt, ShieldCheck, LogOut, AlertTriangle, UserRound } from "lucide-react";
+import { LayoutDashboard, Clapperboard, Repeat, Film, Receipt, ShieldCheck, ShieldAlert, LogOut, AlertTriangle, UserRound } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const links = [
@@ -54,6 +54,20 @@ export default function Layout() {
             >
               <ShieldCheck size={17} strokeWidth={2.2} />
               Admin
+            </NavLink>
+          )}
+          {isAdmin && (
+            <NavLink
+              to="/admin/security"
+              data-testid="nav-admin-security"
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-md px-4 py-2.5 text-sm font-semibold ${
+                  isActive ? "bg-warn/10 text-warn" : "text-zinc-400 hover:bg-raise hover:text-white"
+                }`
+              }
+            >
+              <ShieldAlert size={17} strokeWidth={2.2} />
+              Security
             </NavLink>
           )}
         </nav>
