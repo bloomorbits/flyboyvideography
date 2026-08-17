@@ -8,7 +8,7 @@ import { Btn, Card, Input, Label, PageHeader, StatusPill, fmtDate } from "../com
 
 const DELIV_STATUSES = ["draft", "in_review", "revisions_requested", "approved", "final_delivered"];
 
-const selectCls = "w-full rounded-md border border-line bg-raise px-4 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-accent/50";
+const selectCls = "w-full rounded-md border border-dune bg-sand px-4 py-2.5 text-sm text-ink outline-none focus:ring-2 focus:ring-accent/50";
 
 export default function Admin() {
   const { profile } = useAuth();
@@ -140,7 +140,7 @@ export default function Admin() {
           )}
         </div>
         {selected && clients.find((x) => x.id === selected)?.email?.endsWith("@anonymized.invalid") && (
-          <p className="mt-3 font-mono text-xs text-warn" data-testid="erased-client-note">
+          <p className="mt-3 font-mono text-xs text-[#B45309]" data-testid="erased-client-note">
             This client has been GDPR-erased: personal data anonymized, login disabled, financial records retained.
           </p>
         )}
@@ -149,13 +149,13 @@ export default function Admin() {
       {selected && (
         <>
           <Card className="mb-8">
-            <div className="flex border-b border-line">
+            <div className="flex border-b border-dune">
               {["deliverable", "booking", "subscription", "invoice"].map((t) => (
                 <button
                   key={t}
                   data-testid={`admin-tab-${t}`}
                   onClick={() => { setTab(t); setForm({}); }}
-                  className={`px-6 py-3 text-sm font-bold capitalize ${tab === t ? "border-b-2 border-accent text-accent" : "text-zinc-500 hover:text-white"}`}
+                  className={`px-6 py-3 text-sm font-bold capitalize ${tab === t ? "border-b-2 border-accent text-accent" : "text-ink/50 hover:text-ink"}`}
                   style={{ transition: "color 0.15s ease" }}
                 >
                   New {t}
@@ -244,15 +244,15 @@ export default function Admin() {
 
           <h2 className="mb-4 font-display text-2xl font-semibold tracking-tight">Client deliverables</h2>
           <Card>
-            {delivs.length === 0 && <p className="p-6 text-sm text-zinc-500">No deliverables for this client.</p>}
+            {delivs.length === 0 && <p className="p-6 text-sm text-ink/50">No deliverables for this client.</p>}
             {delivs.map((d, i) => (
-              <div key={d.id} className={`flex items-center justify-between gap-4 px-6 py-4 ${i > 0 ? "border-t border-line" : ""}`} data-testid={`admin-deliv-row-${i}`}>
+              <div key={d.id} className={`flex items-center justify-between gap-4 px-6 py-4 ${i > 0 ? "border-t border-dune" : ""}`} data-testid={`admin-deliv-row-${i}`}>
                 <div>
                   <p className="font-semibold">{d.title}</p>
-                  <p className="font-mono text-xs text-zinc-500">
+                  <p className="font-mono text-xs text-ink/50">
                     v{d.version} · revisions {d.revision_rounds_used ?? 0}/{d.included_revision_rounds ?? 0}
                     {(d.revision_rounds_used ?? 0) > (d.included_revision_rounds ?? 0) && (
-                      <span data-testid={`admin-extra-rounds-badge-${i}`} className="ml-2 rounded bg-warn/15 px-2 py-0.5 font-bold uppercase tracking-widest text-warn">
+                      <span data-testid={`admin-extra-rounds-badge-${i}`} className="ml-2 rounded bg-[#B45309]/15 px-2 py-0.5 font-bold uppercase tracking-widest text-[#B45309]">
                         {(d.revision_rounds_used ?? 0) - (d.included_revision_rounds ?? 0)} extra round{(d.revision_rounds_used ?? 0) - (d.included_revision_rounds ?? 0) > 1 ? "s" : ""} — billable
                       </span>
                     )}
@@ -262,7 +262,7 @@ export default function Admin() {
                   <StatusPill status={d.status} />
                   <select
                     data-testid={`admin-deliv-status-select-${i}`}
-                    className="rounded-md border border-line bg-raise px-3 py-1.5 text-xs text-white outline-none"
+                    className="rounded-md border border-dune bg-sand px-3 py-1.5 text-xs text-ink outline-none"
                     value={d.status}
                     onChange={(e) => patchStatus(d.id, e.target.value)}
                   >
@@ -278,27 +278,27 @@ export default function Admin() {
       <div className="mt-12">
         <h2 className="mb-4 font-display text-2xl font-semibold tracking-tight">Erasure audit log</h2>
         <Card data-testid="erasure-audit-log">
-          {audit.length === 0 && <p className="p-6 text-sm text-zinc-500">No erasures recorded.</p>}
+          {audit.length === 0 && <p className="p-6 text-sm text-ink/50">No erasures recorded.</p>}
           {audit.map((a, i) => (
-            <div key={a.id} className={`px-6 py-4 ${i > 0 ? "border-t border-line" : ""}`} data-testid={`audit-entry-${i}`}>
+            <div key={a.id} className={`px-6 py-4 ${i > 0 ? "border-t border-dune" : ""}`} data-testid={`audit-entry-${i}`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <p className="font-mono text-sm font-bold text-warn">{a.anonymized_email}</p>
+                  <p className="font-mono text-sm font-bold text-[#B45309]">{a.anonymized_email}</p>
                   {a.backfilled && (
-                    <span data-testid={`audit-backfilled-badge-${i}`} className="rounded bg-warn/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-warn">
+                    <span data-testid={`audit-backfilled-badge-${i}`} className="rounded bg-[#B45309]/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-[#B45309]">
                       Backfilled
                     </span>
                   )}
                 </div>
-                <p className="font-mono text-xs text-zinc-500">{fmtDate(a.created_at?.slice(0, 10))}</p>
+                <p className="font-mono text-xs text-ink/50">{fmtDate(a.created_at?.slice(0, 10))}</p>
               </div>
-              <p className="mt-1 text-sm text-zinc-400">
-                Erased by <span className="text-zinc-200">{a.performed_by_email}</span> · client id <span className="font-mono text-xs">{a.erased_client_id}</span>
+              <p className="mt-1 text-sm text-ink/60">
+                Erased by <span className="text-ink">{a.performed_by_email}</span> · client id <span className="font-mono text-xs">{a.erased_client_id}</span>
               </p>
-              <p className="mt-1 font-mono text-xs text-zinc-500">
+              <p className="mt-1 font-mono text-xs text-ink/50">
                 preserved: {a.bookings_preserved} bookings · {a.deliverables_preserved} deliverables · {a.invoices_preserved} invoices
               </p>
-              {a.note && <p className="mt-2 text-xs italic text-zinc-500">{a.note}</p>}
+              {a.note && <p className="mt-2 text-xs italic text-ink/50">{a.note}</p>}
             </div>
           ))}
         </Card>
@@ -310,8 +310,8 @@ export default function Admin() {
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="font-bold">Purge all seed / test data</p>
-              <p className="mt-1 max-w-xl text-sm text-zinc-400">
-                Permanently deletes every record tagged <code className="font-mono text-xs text-warn">is_seed_data</code> and the matching test login accounts.
+              <p className="mt-1 max-w-xl text-sm text-ink/60">
+                Permanently deletes every record tagged <code className="font-mono text-xs text-[#B45309]">is_seed_data</code> and the matching test login accounts.
                 Admin accounts and the erasure audit log are preserved. Requires typed confirmation.
               </p>
             </div>
