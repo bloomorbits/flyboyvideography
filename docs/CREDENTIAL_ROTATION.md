@@ -209,3 +209,108 @@ The tax mode switch is a small code change (one branch in the
 `create_checkout_session` call) plus enabling Stripe Tax in the
 Stripe Dashboard. The change point is marked in code with a
 `TAX MODE` comment near the `stripe.checkout.Session.create(...)` call.
+
+## Pre-launch infra tasks (P0 — MUST be resolved before real, high-value traffic)
+
+These are edge/ingress-layer misconfigurations, not code bugs. They cannot
+be fully mitigated from the FastAPI app because the ingress runs *in
+front* of it and overrides headers on the way in and out. The layered
+defenses shipped in the app on 2026-02 (rate-limiter + concurrent-lock
+caps + global circuit breaker for SEC-001; static allowlist for the open
+redirect; ALLOWED_ORIGIN_URLS + CORS_ORIGINS env vars) are mitigations,
+not fixes. Do not consider the SEC audit closed until these are done.
+
+### PL-INFRA-1 [P0] — Strip client-supplied `X-Forwarded-For` at the edge
+
+**Empirical finding (2026-02):** The Emergent preview ingress does NOT
+strip a client-supplied `X-Forwarded-For` prefix — it merely appends its
+own hops. `curl -H "X-Forwarded-For: 1.2.3.4" $BACKEND/api/_probe/ip`
+reaches FastAPI with the spoofed value still in the leftmost position of
+the header. Standard nginx-ingress with `use-forwarded-headers: false`
+or `use-forwarded-headers: true` combined with `enable-real-ip: true` +
+`set-real-ip-from: <trusted-proxy-cidr>` would drop this.
+
+**Impact:** IP-based rate limiting (`RL_MAX_PER_IP`, `LOCK_CAP_PER_IP` in
+`/app/backend/booking.py`) is best-effort only. A bot that varies both the
+XFF header AND the email address on every request will bypass every
+per-source cap. The GLOBAL circuit breaker (`RL_MAX_GLOBAL`,
+`LOCK_CAP_GLOBAL`) is the current backstop but it's a system-wide brake,
+not a per-attacker one — a determined attacker can still starve
+legitimate users.
+
+**Fix (choose one, in order of preference):**
+1. Configure the ingress to REPLACE (not append to) `X-Forwarded-For` at
+   the edge so only the trusted proxy chain is visible to the app.
+2. Have the ingress set a bespoke, non-spoofable header like
+   `X-Emergent-Client-IP: <real>` after stripping the client-supplied
+   version. Update `_client_ip()` in `booking.py` to prefer it.
+3. If neither is available on Emergent Deploy: put a Cloudflare Worker
+   or equivalent in front that sets `CF-Connecting-IP` and drop trust
+   in XFF entirely.
+
+**Verify:** Send `curl -H "X-Forwarded-For: 1.2.3.4" $DEPLOYED/api/_probe/ip`
+against production; expect `1.2.3.4` NOT to appear anywhere in the header
+FastAPI sees. Then confirm the rate limiter blocks a bot that varies XFF
+per-request within the per-IP limit (scenario C in
+`/app/backend/tests/sim_calendar_freeze_attack.py` should fire the
+per-IP cap around attempt 6, not the global one at 51).
+
+### PL-INFRA-2 [P0] — Do not inject `Access-Control-Allow-Origin: *` at the edge
+
+**Empirical finding (2026-02):** The Emergent preview ingress rewrites
+`access-control-allow-origin` to `*` on every response (verified via
+`curl -i -H "Origin: https://evil.example.com" $BACKEND/api/health`
+returning `access-control-allow-origin: *` regardless of what FastAPI
+set). FastAPI-level tightening
+(`CORS_ORIGINS=https://flyboyvideography.com,...`) is correctly applied
+on `localhost:8001` (direct-to-app) — verified — but is masked on the
+public preview URL by the ingress override.
+
+**Impact:** Any origin can currently make cross-origin XHR/fetch calls
+to the preview backend from a user's browser. The API's own auth (bearer
+JWT) still applies, but this defeats the defense-in-depth CORS layer we
+would otherwise have.
+
+**Fix:** Configure the ingress / Emergent Deploy to pass through the
+application's `Access-Control-Allow-*` headers verbatim rather than
+overriding them. If Emergent Deploy runs a global "dev-mode friendly"
+CORS at the platform layer, request an opt-out for production
+deployments.
+
+**Verify:**
+```
+curl -i -H "Origin: https://evil.example.com" $DEPLOYED/api/health \
+  | grep -i access-control-allow-origin
+```
+Expect NO `access-control-allow-origin` header (or one that echoes only
+allow-listed origins), never `*`.
+
+### PL-INFRA-3 [P0] — Rotate all secrets before live traffic
+
+The `.env` currently in the preview pod holds:
+- `SUPABASE_SERVICE_ROLE_KEY` (bypasses all RLS)
+- `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` (currently sandbox — will
+  become live keys the moment the client claims the sandbox via KYC)
+- `RESEND_API_KEY`
+
+They were confirmed clean from git history in the 2026-02 scrub, and are
+not exposed to the frontend or the public Next.js site. But they have
+been visible in this preview pod / deployment logs during dev, and every
+credential visible outside its provider dashboard should be rotated once
+before real traffic.
+
+**Fix:** After the sandbox is claimed (KYC completed by the client and
+Stripe promotes to a live account), rotate ALL three provider keys in
+sequence following the flow in the "Rotation flow" section above. Verify
+each rotation against the DEPLOYED backend (step 5 of the flow), not the
+preview pod.
+
+### Cross-reference
+
+- Application-layer mitigations that partially cover the above are in
+  `/app/backend/booking.py`:
+  - `_rate_limit_or_429`, `_concurrent_lock_or_429` (SEC-001)
+  - `ALLOWED_ORIGIN_URLS` allowlist (open redirect)
+  - `email_confirm=False` on `admin.create_user` (SEC-002)
+- Concurrency + rate-limit proof: `tests/test_booking_concurrency.py`
+  and `tests/sim_calendar_freeze_attack.py`.

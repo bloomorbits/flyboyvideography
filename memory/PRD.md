@@ -206,6 +206,42 @@ clients, bookings, retainer_subscriptions, deliverables, review_threads, invoice
 - P2: GDPR erasure flow (anonymize client, keep invoices).
 
 
+## Security hardening (Feb 2026) — session 9
+- **SEC-001 mitigated** — layered rate limiting + concurrent-lock caps on
+  POST /api/booking/checkout. Migration 007 (`checkout_attempts` table +
+  `ip` column on `date_slot_locks`) applied and introspected. Limits:
+  per-email 3/15min + per-IP 5/15min best-effort + global 100/15min;
+  concurrent locks 2/email + 3/IP + 50 global. All 429 responses log raw
+  XFF/x-real-ip/client_host/UA for forensic analysis. Proof:
+  `tests/sim_calendar_freeze_attack.py` runs 3 realistic attack scenarios;
+  scenario C (XFF spoofing + per-request email variation) confirms the
+  global lock cap fires at attempt 51 even under total per-source bypass.
+- **SEC-002 mitigated** — `admin.create_user(email_confirm=False)` in
+  `booking.py:_ensure_auth_user`. Account creation still happens only
+  AFTER Stripe confirms payment (via webhook or the `/status` inline
+  Stripe probe), and the recovery link mailed via Resend is the sole
+  path that flips `email_confirmed_at` — so an unsolicited email
+  captured mid-booking cannot be silently pre-verified.
+- **Open redirect closed** — `ALLOWED_ORIGIN_URLS` env allowlist checked
+  before embedding `origin_url` into Stripe's success/cancel URLs.
+  Static list (no wildcards) per user directive: production domain, www
+  subdomain, primary Vercel URL, Emergent preview, localhost dev.
+- **CORS tightened at app layer** — `CORS_ORIGINS` env narrowed from `*`
+  to the same list as `ALLOWED_ORIGIN_URLS`. Verified enforced at
+  localhost:8001. **On the Emergent preview URL, the ingress overrides
+  ACAO to `*` regardless of app-layer settings — flagged as
+  PL-INFRA-2 (P0 pre-launch infra task) in CREDENTIAL_ROTATION.md.**
+- **XFF trust boundary documented** — the Emergent preview ingress does
+  not strip client-supplied X-Forwarded-For prefixes. The layered
+  defense mitigates the impact, but the root fix requires ingress
+  reconfiguration — flagged as PL-INFRA-1 (P0 pre-launch).
+- **Secret rotation runbook updated** — CREDENTIAL_ROTATION.md now has a
+  "Pre-launch infra tasks" section covering PL-INFRA-1 (XFF strip),
+  PL-INFRA-2 (CORS override), and PL-INFRA-3 (rotate keys once before
+  live traffic). These are explicitly P0 blockers before real,
+  high-value traffic hits `/book`, not deferrable ops nice-to-haves.
+
+
 ## Implemented (Feb 2026) — session 9 (Phase 1 Booking Flow)
 - Client-facing project booking (one-off, non-retainer) live on public Next.js
   site at /book. Two-step form (package/tier/date → contact details) → Stripe

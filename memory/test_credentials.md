@@ -36,3 +36,16 @@ Supabase project: https://pnqqmzszasvfnvnnonvd.supabase.co (auth + Postgres; NO 
     Dashboard. Success page polls /api/booking/status/{session_id}.
 - Test emails created by the flow should use *@flyboytest.com so they're
   easy to spot and delete via the GoTrue admin API afterwards.
+
+
+## Rate-limit / SEC-001 test hygiene (session 9)
+- The rate limiter uses a `checkout_attempts` table keyed by ip + email
+  with a 15-minute sliding window and per-IP cap = 5. Automated test suites
+  running from the same source IP MUST purge this table between tests, or
+  hit spurious 429s on the ~6th checkout POST.
+- Convention: test emails ALWAYS live on one of these domains — `@flyboytest.com`,
+  `@example.com`, `@race.test`, or `@seed.flyboytest.com`. The
+  autouse fixture in `tests/test_booking_flow.py` and the sim
+  `tests/sim_calendar_freeze_attack.py` both purge the ledger for these
+  patterns before/after they run. Any human ad-hoc probe should use one
+  of these domains so it gets swept up by the same fixtures.

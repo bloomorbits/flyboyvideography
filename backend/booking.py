@@ -62,6 +62,44 @@ LOCK_TTL_MINUTES = 5
 # Availability window: how far ahead we let visitors book.
 AVAILABILITY_MONTHS_AHEAD = 18
 
+# ---------- SEC-001 rate-limit config (see supabase_migration_007_rate_limit.sql) ----------
+# Layered defense — no single spoofable signal is the whole guard. The EMAIL
+# limits are the hardest to bypass cheaply (attacker needs many real inboxes
+# to receive the Stripe redirect). The IP limits are best-effort (defeatable
+# via X-Forwarded-For prepending on the current Emergent edge — see
+# CREDENTIAL_ROTATION.md → "Pre-launch infra tasks" for the ops-side fix).
+# The GLOBAL caps are the anti-calendar-freeze backstop that works even if
+# an attacker fully bypasses the per-IP checks.
+
+RL_WINDOW_MINUTES = 15
+RL_MAX_PER_EMAIL = 3          # per 15-min window
+RL_MAX_PER_IP = 5             # per 15-min window
+RL_MAX_GLOBAL = 100           # per 15-min window, system-wide
+
+LOCK_CAP_PER_EMAIL = 2        # concurrent active locks
+LOCK_CAP_PER_IP = 3           # concurrent active locks
+LOCK_CAP_GLOBAL = 50          # concurrent active locks, system-wide
+
+# Retention: purge attempt rows older than this on every checkout call
+# (cheap; keeps the table from unbounded growth without needing a cron).
+RL_PURGE_HOURS = 24
+
+# origin_url allowlist for Stripe success/cancel URLs (SEC — open redirect).
+# Comma-separated env var. If unset, defaults to the safe production +
+# preview + localhost list.
+_default_origin_allowlist = ",".join([
+    "https://flyboyvideography.com",
+    "https://www.flyboyvideography.com",
+    "https://flyboyvideography.vercel.app",
+    "https://db-bridge-5.preview.emergentagent.com",
+    "http://localhost:3001",
+])
+ALLOWED_ORIGIN_URLS = {
+    o.strip().rstrip("/")
+    for o in os.environ.get("ALLOWED_ORIGIN_URLS", _default_origin_allowlist).split(",")
+    if o.strip()
+}
+
 EMAIL_TEMPLATE_DIR = Path(__file__).parent / "emails"
 
 router = APIRouter()
@@ -104,6 +142,164 @@ def _sb():
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# ---------- SEC-001 rate limiter ----------
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP extraction. On the current Emergent edge,
+    X-Forwarded-For is NOT stripped — a client can prepend arbitrary
+    values. So the leftmost XFF value is used as best-effort only; the
+    global caps are the actual anti-calendar-freeze backstop, and every
+    429 logs the raw headers so we can retro-detect bypass attempts.
+
+    See CREDENTIAL_ROTATION.md → 'Pre-launch infra tasks' for the ops-side
+    fix that would make this header trustworthy.
+    """
+    xff = request.headers.get("x-forwarded-for") or ""
+    if xff:
+        # Leftmost value is the (best-effort) originating client. Strip
+        # whitespace; if the client sent gibberish we still get a stable
+        # per-client bucket, just an easily-spoofable one.
+        return xff.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    return request.client.host if request.client else "unknown"
+
+
+def _log_bypass_forensics(request: Request, reason: str, email: str) -> None:
+    """Log everything we'd need to retro-analyse a rate-limit bypass
+    attempt. Deliberately noisy — cheap now, would be the first thing
+    worth having if real forensic analysis is ever needed later."""
+    log.warning(
+        "RL_429 reason=%s email=%s xff=%r x-real-ip=%r cf-connecting-ip=%r client_host=%r ua=%r",
+        reason,
+        email,
+        request.headers.get("x-forwarded-for"),
+        request.headers.get("x-real-ip"),
+        request.headers.get("cf-connecting-ip"),
+        request.client.host if request.client else None,
+        (request.headers.get("user-agent") or "")[:200],
+    )
+
+
+def _rate_limit_or_429(sb, request: Request, email: str) -> None:
+    """Enforce the layered rate limits BEFORE any Stripe/DB writes.
+
+    Layers:
+      1. per-email  (hardest to bypass — attacker needs real inboxes)
+      2. per-IP     (best-effort, defeatable via XFF spoofing)
+      3. global     (circuit breaker — catches distributed spoofing)
+
+    On breach, raises HTTPException(429) with a Retry-After header and
+    logs the full header context for forensic analysis.
+    """
+    ip = _client_ip(request)
+    now = datetime.now(timezone.utc)
+    window_start = (now - timedelta(minutes=RL_WINDOW_MINUTES)).isoformat()
+    purge_before = (now - timedelta(hours=RL_PURGE_HOURS)).isoformat()
+
+    # Lazy retention purge (fire-and-forget style — failures here must never
+    # block a legitimate booking).
+    try:
+        sb.table("checkout_attempts").delete().lt("created_at", purge_before).execute()
+    except Exception as e:
+        log.warning("checkout_attempts purge failed: %s", e)
+
+    # 1. per-email
+    r = sb.table("checkout_attempts").select("id", count="exact").ilike("email", email).gte(
+        "created_at", window_start
+    ).execute()
+    if (r.count or 0) >= RL_MAX_PER_EMAIL:
+        _log_bypass_forensics(request, "per_email", email)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many booking attempts for this email. Try again in {RL_WINDOW_MINUTES} minutes.",
+            headers={"Retry-After": str(RL_WINDOW_MINUTES * 60)},
+        )
+
+    # 2. per-IP (best-effort)
+    r = sb.table("checkout_attempts").select("id", count="exact").eq("ip", ip).gte(
+        "created_at", window_start
+    ).execute()
+    if (r.count or 0) >= RL_MAX_PER_IP:
+        _log_bypass_forensics(request, "per_ip", email)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many booking attempts from your network. Try again in {RL_WINDOW_MINUTES} minutes.",
+            headers={"Retry-After": str(RL_WINDOW_MINUTES * 60)},
+        )
+
+    # 3. global circuit breaker
+    r = sb.table("checkout_attempts").select("id", count="exact").gte(
+        "created_at", window_start
+    ).execute()
+    if (r.count or 0) >= RL_MAX_GLOBAL:
+        _log_bypass_forensics(request, "global_attempts", email)
+        raise HTTPException(
+            status_code=429,
+            detail="We're experiencing unusually high booking traffic. Please try again in a few minutes.",
+            headers={"Retry-After": str(RL_WINDOW_MINUTES * 60)},
+        )
+
+
+def _concurrent_lock_or_429(sb, request: Request, email: str) -> None:
+    """Enforce concurrent-active-lock caps. Complements the request-rate
+    limiter above: someone pacing under the rate cap can still be blocked
+    from tying up too many dates at once. Runs AFTER the rate check so
+    a spammy request never even reaches this query."""
+    ip = _client_ip(request)
+    now_iso = _now_iso()
+
+    # per-email
+    r = sb.table("date_slot_locks").select("id", count="exact").ilike("email", email).gt(
+        "expires_at", now_iso
+    ).execute()
+    if (r.count or 0) >= LOCK_CAP_PER_EMAIL:
+        _log_bypass_forensics(request, "locks_per_email", email)
+        raise HTTPException(
+            status_code=429,
+            detail=f"You already have {LOCK_CAP_PER_EMAIL} pending booking(s). Finish or cancel one before starting another.",
+            headers={"Retry-After": str(LOCK_TTL_MINUTES * 60)},
+        )
+
+    # per-IP (best-effort — same caveat as the rate check)
+    r = sb.table("date_slot_locks").select("id", count="exact").eq("ip", ip).gt(
+        "expires_at", now_iso
+    ).execute()
+    if (r.count or 0) >= LOCK_CAP_PER_IP:
+        _log_bypass_forensics(request, "locks_per_ip", email)
+        raise HTTPException(
+            status_code=429,
+            detail="Too many pending bookings from your network. Please finish or cancel one before starting another.",
+            headers={"Retry-After": str(LOCK_TTL_MINUTES * 60)},
+        )
+
+    # global circuit breaker
+    r = sb.table("date_slot_locks").select("id", count="exact").gt("expires_at", now_iso).execute()
+    if (r.count or 0) >= LOCK_CAP_GLOBAL:
+        _log_bypass_forensics(request, "locks_global", email)
+        raise HTTPException(
+            status_code=429,
+            detail="We're experiencing unusually high booking traffic. Please try again in a few minutes.",
+            headers={"Retry-After": str(LOCK_TTL_MINUTES * 60)},
+        )
+
+
+def _record_checkout_attempt(sb, request: Request, email: str) -> None:
+    try:
+        sb.table("checkout_attempts").insert({
+            "ip": _client_ip(request),
+            "email": email.lower(),
+        }).execute()
+    except Exception as e:
+        # Never let a rate-limit ledger write block a real booking. If the
+        # limiter can't record, the next request from the same source
+        # simply doesn't see the earlier attempt — fail-open on the LEDGER
+        # while the actual limits still fire based on whatever rows did
+        # persist. This is a conscious asymmetry.
+        log.warning("checkout_attempts insert failed: %s", e)
+
+
+# ---------- Availability helpers ----------
 
 
 def _clean_expired_locks(sb, event_date: str) -> None:
@@ -151,9 +347,14 @@ def _ensure_auth_user(sb, email: str, full_name: str) -> str:
         if (u.get("email") or "").lower() == email.lower():
             return u["id"]
 
+    # SEC-002 — do NOT pre-confirm the email. The user only becomes verified
+    # when they click the Supabase-issued recovery link we email post-payment;
+    # that click completes both email verification AND password setup in one
+    # step. Leaving `email_confirm=False` here means an unsolicited email
+    # captured mid-booking cannot be silently pre-verified in our auth store.
     created = sb.auth.admin.create_user({
         "email": email,
-        "email_confirm": True,
+        "email_confirm": False,
         "user_metadata": {"full_name": full_name},
     })
     return created.user.id
@@ -352,8 +553,13 @@ def availability(months_ahead: int = AVAILABILITY_MONTHS_AHEAD):
 
 
 @router.post("/api/booking/checkout", response_model=CheckoutOut)
-def create_checkout(body: CheckoutIn):
+def create_checkout(body: CheckoutIn, request: Request):
     sb = _sb()
+
+    # SEC-001 — rate limit + concurrent-lock cap BEFORE any Stripe/DB writes.
+    # These raise 429 with a Retry-After header and log the raw forensics.
+    _rate_limit_or_429(sb, request, str(body.email))
+    _concurrent_lock_or_429(sb, request, str(body.email))
 
     pkg, tier = find_tier(body.package_id, body.tier_name)
     if pkg is None or tier is None:
@@ -361,6 +567,13 @@ def create_checkout(body: CheckoutIn):
 
     if body.event_date <= date.today():
         raise HTTPException(422, "Pick a future date.")
+
+    # SEC — open redirect: validate origin_url is on the allowlist BEFORE
+    # embedding it into the Stripe Checkout Session's success/cancel URLs.
+    origin = body.origin_url.rstrip("/")
+    if origin not in ALLOWED_ORIGIN_URLS:
+        log.warning("open-redirect attempt: origin_url=%r not in allowlist", body.origin_url)
+        raise HTTPException(422, "Unsupported origin_url.")
 
     event_iso = body.event_date.isoformat()
 
@@ -446,7 +659,9 @@ def create_checkout(body: CheckoutIn):
         "updated_at": _now_iso(),
     }).eq("id", intent_row["id"]).execute()
 
-    # 5. date_slot_locks (soft hold)
+    # 5. date_slot_locks (soft hold) — now records the client IP so the
+    #    concurrent-lock cap can arithmetic against it. Insert AFTER Stripe
+    #    session creation so a Stripe failure doesn't leave an orphan lock.
     expires_at = (datetime.now(timezone.utc) + timedelta(minutes=LOCK_TTL_MINUTES)).isoformat()
     try:
         sb.table("date_slot_locks").insert({
@@ -454,11 +669,16 @@ def create_checkout(body: CheckoutIn):
             "session_id": session.id,
             "email": str(body.email),
             "expires_at": expires_at,
+            "ip": _client_ip(request),
         }).execute()
     except Exception as e:
         # Duplicate session_id (extremely unlikely) — non-fatal, hard guard is
         # still the bookings unique index at webhook time.
         log.warning("date_slot_lock insert failed for %s: %s", event_iso, e)
+
+    # 6. record the rate-limit attempt (last, so a partial failure earlier
+    #    doesn't have the ledger hold this request against the caller).
+    _record_checkout_attempt(sb, request, str(body.email))
 
     return CheckoutOut(checkout_url=session.url, session_id=session.id)
 
