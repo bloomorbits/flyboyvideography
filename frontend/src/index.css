@@ -1,5 +1,4 @@
-@import url("https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -7,37 +6,42 @@
 
 body {
   margin: 0;
-  background-color: #09090b;
-  color: #ffffff;
-  font-family: "Manrope", sans-serif;
+  background-color: #FAF8F4;      /* cream */
+  color: #17140F;                  /* ink */
+  font-family: "Inter", sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
+/* Subtle warm grain overlay — much softer than the dark theme's 3.5%
+   because it needs to sit invisibly on cream. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 1;
-  opacity: 0.035;
+  opacity: 0.02;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 ::selection {
-  background: #00e5ff;
-  color: #000;
+  background: rgba(14, 116, 144, 0.2);  /* accent-tinted */
+  color: #17140F;
 }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #121214; }
-::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+::-webkit-scrollbar-track { background: #F1EBE0; }               /* sand */
+::-webkit-scrollbar-thumb { background: #E9E1D2; border-radius: 4px; } /* dune */
+::-webkit-scrollbar-thumb:hover { background: #d6cbb4; }
 
+/* Card hover — physical elevation, not colour-shift glow (design agent brief). */
 .card-hover {
-  transition: transform 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 .card-hover:hover {
   transform: translateY(-2px);
-  border-color: #52525b;
+  box-shadow: 0 8px 24px rgba(23, 20, 15, 0.06);
+  border-color: #d6cbb4;
 }
 
 @keyframes rise {
@@ -45,3 +49,11 @@ body::before {
   to { opacity: 1; transform: translateY(0); }
 }
 .rise { animation: rise 0.4s ease both; }
+
+/* Staggered reveal helper — used on Dashboard card grids etc. */
+.reveal-stagger > * { animation: rise 0.5s ease both; }
+.reveal-stagger > *:nth-child(2) { animation-delay: 0.08s; }
+.reveal-stagger > *:nth-child(3) { animation-delay: 0.16s; }
+.reveal-stagger > *:nth-child(4) { animation-delay: 0.24s; }
+.reveal-stagger > *:nth-child(5) { animation-delay: 0.32s; }
+.reveal-stagger > *:nth-child(6) { animation-delay: 0.40s; }

@@ -92,12 +92,22 @@ export default function AuthPage() {
   }[mode];
 
   return (
-    <div className="relative z-10 flex min-h-screen">
-      <div className="hidden lg:block lg:w-1/2 bg-cover bg-center" style={{ backgroundImage: `url(${HERO})` }} />
+    <div className="relative z-10 flex min-h-screen bg-cream text-ink">
+      <div
+        className="relative hidden lg:block lg:w-1/2 bg-cover bg-center"
+        style={{ backgroundImage: `url(${HERO})` }}
+      >
+        <div className="absolute inset-0 bg-ink/30" />
+        <div className="absolute bottom-10 left-10 max-w-md text-cream">
+          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-cream/80">Flyboy · Client Portal</p>
+          <p className="mt-3 font-display text-3xl font-bold leading-tight">Your films. Your review threads. One quiet place.</p>
+        </div>
+      </div>
       <div className="flex w-full items-center justify-center px-6 py-10 lg:w-1/2">
-        <div className="w-full max-w-sm">
-          <h1 data-testid="auth-headline" className="font-display text-2xl font-semibold tracking-tight">{headline}</h1>
-          <p className="mt-2 text-sm text-zinc-400">
+        <div className="w-full max-w-sm rise">
+          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-accent">Client Portal</p>
+          <h1 data-testid="auth-headline" className="mt-2 font-display text-3xl font-bold tracking-tight text-ink">{headline}</h1>
+          <p className="mt-3 text-sm text-ink/60">
             {mode === "signup" && "Set up your Flyboy Videography client portal."}
             {mode === "login" && "Welcome back to your client portal."}
             {mode === "reset" && "Enter your email and we'll send you a link to set a new password."}
@@ -131,8 +141,7 @@ export default function AuthPage() {
             <button
               data-testid="auth-forgot-password"
               onClick={() => setMode("reset")}
-              className="mt-3 text-sm text-zinc-400 underline decoration-dotted underline-offset-4 hover:text-accent"
-              style={{ transition: "color 0.15s ease" }}
+              className="mt-3 text-sm text-ink/60 underline decoration-dotted underline-offset-4 transition-colors hover:text-accent"
             >
               Forgot your password?
             </button>
@@ -142,8 +151,7 @@ export default function AuthPage() {
             <button
               data-testid="auth-mode-toggle"
               onClick={() => setMode(mode === "login" ? "signup" : "login")}
-              className="mt-6 block text-sm text-zinc-400 underline decoration-line underline-offset-4 hover:text-accent"
-              style={{ transition: "color 0.15s ease" }}
+              className="mt-6 block text-sm text-ink/60 underline decoration-dune underline-offset-4 transition-colors hover:text-accent"
             >
               {mode === "login" ? "New client? Create an account" : "Already have an account? Sign in"}
             </button>
@@ -153,17 +161,15 @@ export default function AuthPage() {
             <button
               data-testid="auth-back-to-login"
               onClick={() => setMode("login")}
-              className="mt-6 block text-sm text-zinc-400 underline decoration-line underline-offset-4 hover:text-accent"
-              style={{ transition: "color 0.15s ease" }}
+              className="mt-6 block text-sm text-ink/60 underline decoration-dune underline-offset-4 transition-colors hover:text-accent"
             >
               ← Back to sign in
             </button>
           )}
 
-          {/* Bloomorbit Studio credit — same rule as the public site footer. */}
           <p
             data-testid="auth-bloomorbit-credit"
-            className="mt-10 text-center text-xs uppercase tracking-[0.25em] text-zinc-500"
+            className="mt-10 text-center text-xs uppercase tracking-[0.25em] text-ink/50"
           >
             Built by{" "}
             <a
@@ -171,7 +177,7 @@ export default function AuthPage() {
               target="_blank"
               rel="noopener noreferrer"
               data-testid="auth-bloomorbit-credit-link"
-              className="underline decoration-dotted underline-offset-4 hover:text-zinc-200 hover:decoration-solid"
+              className="underline decoration-dotted underline-offset-4 hover:text-ink hover:decoration-solid"
             >
               Bloomorbit Studio
             </a>
