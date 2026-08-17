@@ -11,6 +11,17 @@ Cutover connects Railway and Vercel to **`github.com/bloomorbits/flyboyvideograp
 - `/app/backend/.python-version` — pins Python 3.11 (matches the codebase's local venv).
 - `/app/frontend/vercel.json` — SPA rewrite so `/dashboard`, `/deliverables/:id`, etc. resolve to `index.html`.
 
+## Emergent-only dependencies removed from requirements.txt (session 9)
+
+The Emergent CRA+FastAPI scaffold ships `requirements.txt` with two entries that ONLY resolve inside Emergent's build environment and will hard-fail on Railway / Vercel / any external Python builder:
+
+- `emergentintegrations==0.2.0` — internal LLM-router wrapper (private PyPI index).
+- `litellm @ https://customer-assets.emergentagent.com/internal-asset/library/litellm-...whl` — Emergent-CDN-hosted wheel; unreachable outside Emergent's network.
+
+Both were dead code in this backend (zero imports) — removed before the Railway cutover. If a future agent regenerates `requirements.txt` via `pip freeze` inside the preview pod, these WILL be re-added and Railway builds WILL fail again. The fix is to re-remove them (or, cleaner, `pip freeze` inside a pyenv/venv that never installed them).
+
+**Also unused but harmless (kept for surgical change):** `motor`, `pymongo` — MongoDB clients from the scaffold. Backend is Supabase/Postgres only. Cleanup deferred to post-cutover backlog.
+
 ## Env vars to set on Railway (FastAPI backend)
 
 Copy verbatim from the preview pod's `/app/backend/.env` for the secret ones, then override the origin-list vars with the exact strings below:
