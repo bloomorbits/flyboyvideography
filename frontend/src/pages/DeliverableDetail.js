@@ -93,14 +93,14 @@ export default function DeliverableDetail() {
     }
   };
 
-  if (!deliv) return <p className="font-mono text-xs uppercase tracking-[0.3em] text-zinc-500">Loading…</p>;
+  if (!deliv) return <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/50">Loading…</p>;
 
   const roundsUsed = deliv.revision_rounds_used ?? 0;
   const roundsIncluded = deliv.included_revision_rounds ?? 0;
 
   return (
     <div data-testid="deliverable-detail-page">
-      <Link to="/deliverables" data-testid="back-to-deliverables" className="mb-6 inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-accent" style={{ transition: "color 0.15s ease" }}>
+      <Link to="/deliverables" data-testid="back-to-deliverables" className="mb-6 inline-flex items-center gap-2 text-sm text-ink/60 hover:text-accent" style={{ transition: "color 0.15s ease" }}>
         <ArrowLeft size={15} /> All deliverables
       </Link>
 
@@ -108,14 +108,14 @@ export default function DeliverableDetail() {
         <div>
           <div className="mb-2 flex items-center gap-3">
             <SourceBadge type={deliv.booking_id ? "booking" : "subscription"} />
-            <span className="font-mono text-xs text-zinc-500">VERSION {deliv.version}</span>
-            <span data-testid="revision-rounds-chip" className={`rounded px-2 py-0.5 font-mono text-[11px] font-bold ${roundsUsed >= roundsIncluded ? "bg-warn/15 text-warn" : "bg-zinc-800 text-zinc-400"}`}>
+            <span className="font-mono text-xs text-ink/50">VERSION {deliv.version}</span>
+            <span data-testid="revision-rounds-chip" className={`rounded px-2 py-0.5 font-mono text-[11px] font-bold ${roundsUsed >= roundsIncluded ? "bg-[#B45309]/15 text-[#B45309]" : "bg-sand text-ink/60"}`}>
               REVISIONS {roundsUsed}/{roundsIncluded} INCLUDED
             </span>
           </div>
           <h1 className="font-display text-4xl font-bold tracking-tighter">{deliv.title}</h1>
           {deliv.approved_at && (
-            <p data-testid="approval-record" className="mt-2 flex items-center gap-2 text-sm text-ok">
+            <p data-testid="approval-record" className="mt-2 flex items-center gap-2 text-sm text-[#15803D]">
               <CheckCircle2 size={15} /> Approved by {deliv.approved_by_name} · {fmtDate(deliv.approved_at.slice(0, 10))}
             </p>
           )}
@@ -140,9 +140,9 @@ export default function DeliverableDetail() {
       </div>
 
       {showChanges && (
-        <div className="rise mb-8 rounded-md border border-warn/40 bg-warn/5 p-6">
+        <div className="rise mb-8 rounded-md border border-[#B45309]/40 bg-[#B45309]/5 p-6">
           {roundsUsed >= roundsIncluded && (
-            <p data-testid="extra-round-warning" className="mb-4 font-mono text-xs font-bold uppercase tracking-widest text-warn">
+            <p data-testid="extra-round-warning" className="mb-4 font-mono text-xs font-bold uppercase tracking-widest text-[#B45309]">
               Heads up: all {roundsIncluded} included revision rounds are used — this round may be billed as an extra.
             </p>
           )}
@@ -170,19 +170,19 @@ export default function DeliverableDetail() {
                 <iframe title={deliv.title} src={deliv.video_url} className="h-full w-full" allowFullScreen frameBorder="0" />
               </div>
             ) : (
-              <div className="flex aspect-video items-center justify-center bg-raise">
-                <p className="font-mono text-xs uppercase tracking-[0.3em] text-zinc-600">No preview uploaded</p>
+              <div className="flex aspect-video items-center justify-center bg-sand">
+                <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/40">No preview uploaded</p>
               </div>
             )}
-            <div className="flex items-center justify-between border-t border-line px-6 py-4">
-              <p className="text-sm text-zinc-400">{deliv.notes || "No editor notes for this cut."}</p>
+            <div className="flex items-center justify-between border-t border-dune px-6 py-4">
+              <p className="text-sm text-ink/60">{deliv.notes || "No editor notes for this cut."}</p>
               {deliv.final_file_url && (
                 <a
                   href={deliv.final_file_url}
                   target="_blank"
                   rel="noreferrer"
                   data-testid="final-file-link"
-                  className="flex shrink-0 items-center gap-2 rounded-md bg-ok/10 px-4 py-2 text-sm font-bold text-ok hover:bg-ok/20"
+                  className="flex shrink-0 items-center gap-2 rounded-md bg-[#15803D]/10 px-4 py-2 text-sm font-bold text-[#15803D] hover:bg-[#15803D]/20"
                   style={{ transition: "background-color 0.15s ease" }}
                 >
                   <Download size={15} /> Final files
@@ -195,7 +195,7 @@ export default function DeliverableDetail() {
         <div>
           <h2 className="mb-4 font-display text-xl font-semibold tracking-tight">Review thread</h2>
           <Card className="p-5">
-            <form onSubmit={addComment} className="space-y-4 border-b border-line pb-5">
+            <form onSubmit={addComment} className="space-y-4 border-b border-dune pb-5">
               <div className="flex gap-3">
                 <div className="w-28 shrink-0">
                   <Label>Timecode</Label>
@@ -212,9 +212,9 @@ export default function DeliverableDetail() {
             </form>
 
             <div className="mt-5 space-y-4" data-testid="review-thread-list">
-              {comments.length === 0 && <p className="text-sm text-zinc-500">No notes yet on this version.</p>}
+              {comments.length === 0 && <p className="text-sm text-ink/50">No notes yet on this version.</p>}
               {comments.map((c, i) => (
-                <div key={c.id} className={`rise rounded-md border border-line p-4 ${c.resolved ? "opacity-50" : ""}`} data-testid={`review-comment-${i}`}>
+                <div key={c.id} className={`rise rounded-md border border-dune p-4 ${c.resolved ? "opacity-50" : ""}`} data-testid={`review-comment-${i}`}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       {c.timestamp_seconds !== null && (
@@ -222,13 +222,13 @@ export default function DeliverableDetail() {
                           {secondsToTimecode(Number(c.timestamp_seconds))}
                         </span>
                       )}
-                      <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">v{c.version}</span>
+                      <span className="font-mono text-[10px] uppercase tracking-widest text-ink/50">v{c.version}</span>
                     </div>
                     {(profile?.role === "admin" || profile?.user_id === c.author_user_id) && (
                     <button
                       data-testid={`comment-resolve-btn-${i}`}
                       onClick={() => toggleResolved(c)}
-                      className={`flex items-center gap-1 text-xs font-bold ${c.resolved ? "text-ok" : "text-zinc-500 hover:text-ok"}`}
+                      className={`flex items-center gap-1 text-xs font-bold ${c.resolved ? "text-[#15803D]" : "text-ink/50 hover:text-[#15803D]"}`}
                       style={{ transition: "color 0.15s ease" }}
                     >
                       {c.resolved ? <CheckCircle2 size={14} /> : <Circle size={14} />}
@@ -236,9 +236,9 @@ export default function DeliverableDetail() {
                     </button>
                     )}
                   </div>
-                  <p className="mt-2 text-sm text-zinc-200">{c.comment}</p>
-                  <p className="mt-2 text-xs text-zinc-500">
-                    {c.author_name} {c.author_role === "admin" && <span className="text-warn">· studio</span>} · {fmtDate(c.created_at?.slice(0, 10))}
+                  <p className="mt-2 text-sm text-ink">{c.comment}</p>
+                  <p className="mt-2 text-xs text-ink/50">
+                    {c.author_name} {c.author_role === "admin" && <span className="text-[#B45309]">· studio</span>} · {fmtDate(c.created_at?.slice(0, 10))}
                   </p>
                 </div>
               ))}

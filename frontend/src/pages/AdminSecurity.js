@@ -3,10 +3,17 @@ import { Navigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { Btn, Card, Input, Label, PageHeader, Empty, fmtDate } from "../components/ui";
 
-// Human labels for the `reason` values written by booking.py / contact.py.
-// Anything unmapped falls back to the raw reason (forward-compat).
+/*
+ * AdminSecurity — deliberately kept in a DARK theme even after the 2026-02
+ * portal-restyle (user directive c2: back-of-house tooling stays dark). To
+ * keep this decision robust to future token changes on the rest of the
+ * portal, this page renders as a self-contained dark island using LITERAL
+ * hex values, not the cream/ink theme tokens the shared UI components now
+ * ship. The negative margins bleed over the parent <main>'s cream padding
+ * so the dark surface fills the visible frame.
+ */
+
 const REASON_LABELS = {
   per_email: "Booking · per-email rate",
   per_ip: "Booking · per-IP rate",
@@ -51,12 +58,18 @@ function ReasonPill({ reason }) {
 }
 
 function EventsTable({ events }) {
-  if (!events || events.length === 0) return <Empty text="No rate-limit events in this window." />;
+  if (!events || events.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-[#27272a] bg-[#141416] p-10 text-center text-sm text-zinc-500">
+        No rate-limit events in this window.
+      </div>
+    );
+  }
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[900px] text-sm">
         <thead>
-          <tr className="border-b border-line text-left font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+          <tr className="border-b border-[#27272a] text-left font-mono text-[10px] uppercase tracking-widest text-zinc-500">
             <th className="py-2 pr-4">When</th>
             <th className="py-2 pr-4">Reason</th>
             <th className="py-2 pr-4">Email hash</th>
@@ -67,7 +80,7 @@ function EventsTable({ events }) {
         </thead>
         <tbody data-testid="rl-events-tbody">
           {events.map((e) => (
-            <tr key={e.id} className="border-b border-line/40 align-top">
+            <tr key={e.id} className="border-b border-[#27272a]/50 align-top">
               <td className="py-2 pr-4 text-zinc-300">{fmtTime(e.created_at)}</td>
               <td className="py-2 pr-4"><ReasonPill reason={e.reason} /></td>
               <td className="py-2 pr-4 font-mono text-xs text-zinc-300">{e.email_hash || "—"}</td>
@@ -130,34 +143,46 @@ export default function AdminSecurity() {
   if (profile && !isAdmin) return <Navigate to="/" replace />;
   if (!profile) return null;
 
+  const cardCls = "rounded-lg border border-[#27272a] bg-[#121214]";
+  const inputCls =
+    "w-full rounded-md border border-[#27272a] bg-[#0a0a0a] px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:ring-2 focus:ring-[#00E5FF]/50";
+  const btnPrimary =
+    "rounded-md bg-[#00E5FF] px-5 py-2.5 text-sm font-bold text-black transition-transform hover:bg-[#33EAFF] disabled:cursor-not-allowed disabled:opacity-40";
+  const btnSecondary =
+    "rounded-md border border-[#27272a] bg-[#18181b] px-5 py-2.5 text-sm font-bold text-zinc-100 hover:bg-[#27272a] disabled:cursor-not-allowed disabled:opacity-40";
+
   return (
-    <div data-testid="admin-security-page">
-      <PageHeader
-        kicker="Studio internal · security"
-        title="Rate-limit events"
-      >
-        <p className="text-sm text-zinc-400">
+    <div
+      data-testid="admin-security-page"
+      className="-m-10 min-h-screen bg-[#0a0a0a] p-10 text-zinc-200"
+    >
+      <div className="rise mb-10">
+        <p className="mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.3em] text-[#00E5FF]">Studio internal · security</p>
+        <h1 className="font-display text-3xl font-bold tracking-tight text-zinc-100 sm:text-4xl">Rate-limit events</h1>
+        <p className="mt-3 max-w-2xl text-sm text-zinc-400">
           The last 100 429s the layered rate limiter has fired. Emails are hashed
           (SHA-256[:16]) — paste an email into the search box to see every event
           the same person triggered. Rows are auto-purged after 30 days.
         </p>
-      </PageHeader>
+      </div>
 
-      <Card className="mb-8 p-6">
-        <Label>Search by email</Label>
+      <div className={`${cardCls} mb-8 p-6`}>
+        <label className="mb-1.5 block font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+          Search by email
+        </label>
         <form onSubmit={search} className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Input
+          <input
             data-testid="rl-search-email"
             type="email"
             required
             placeholder="suspect@example.com"
             value={searchEmail}
             onChange={(e) => setSearchEmail(e.target.value)}
-            className="flex-1"
+            className={`${inputCls} flex-1`}
           />
-          <Btn data-testid="rl-search-submit" type="submit" disabled={searching} className="shrink-0">
+          <button data-testid="rl-search-submit" type="submit" disabled={searching} className={`${btnPrimary} shrink-0`}>
             {searching ? "Searching…" : "Search"}
-          </Btn>
+          </button>
         </form>
         {searchResult && (
           <div className="mt-4" data-testid="rl-search-result">
@@ -170,17 +195,19 @@ export default function AdminSecurity() {
             </div>
           </div>
         )}
-      </Card>
+      </div>
 
-      <Card className="p-6">
+      <div className={`${cardCls} p-6`}>
         <div className="mb-4 flex items-center justify-between">
-          <Label>Last 100 events</Label>
-          <Btn data-testid="rl-refresh" variant="secondary" onClick={loadRecent} disabled={loading}>
+          <label className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+            Last 100 events
+          </label>
+          <button data-testid="rl-refresh" onClick={loadRecent} disabled={loading} className={btnSecondary}>
             {loading ? "Loading…" : "Refresh"}
-          </Btn>
+          </button>
         </div>
         <EventsTable events={events} />
-      </Card>
+      </div>
     </div>
   );
 }
