@@ -25,6 +25,39 @@ import requests
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+
+# ---------- SAFETY GUARD (SEC-003 fix) ----------
+# This script hits the live REACT_APP_BACKEND_URL with the service-role key
+# and floods real Stripe test-mode sessions + date_slot_locks. On a
+# production-connected pod it would create real bookings, mutate a real
+# customer's rate-limit history, and could hit real cs_live_ Stripe URLs
+# if this project ever moves to live mode. Refuse to run unless the caller
+# has explicitly opted in AND the target URL matches a known-safe pattern.
+_BASE = (
+    os.environ.get("REACT_APP_BACKEND_URL")
+    or Path("/app/frontend/.env").read_text().split("REACT_APP_BACKEND_URL=", 1)[1].split("\n", 1)[0].strip()
+).rstrip("/")
+
+_SAFE_URL_MARKERS = ("preview.emergentagent.com", "localhost", "127.0.0.1", "staging")
+
+if os.environ.get("ALLOW_ATTACK_SIM") != "1":
+    raise SystemExit(
+        "REFUSED: sim_calendar_freeze_attack.py performs a real booking-flood "
+        "attack against the deployed backend. Set ALLOW_ATTACK_SIM=1 to run. "
+        "Never set this env var on a production-connected shell."
+    )
+if not any(m in _BASE for m in _SAFE_URL_MARKERS):
+    raise SystemExit(
+        f"REFUSED: target URL {_BASE!r} does not match any known-safe pattern "
+        f"({_SAFE_URL_MARKERS!r}). If you REALLY need to run against this URL, "
+        f"extend _SAFE_URL_MARKERS explicitly — but never against a production "
+        f"customer-facing deployment."
+    )
+
+BASE = _BASE
+CHECKOUT = f"{BASE}/api/booking/checkout"
+
 from supabase import create_client  # noqa: E402
 
 # Import the constants so the sim asserts against whatever the code actually
@@ -39,12 +72,6 @@ from booking import (  # noqa: E402
     RL_MAX_PER_IP,
     RL_MAX_GLOBAL,
 )
-
-BASE = (
-    os.environ.get("REACT_APP_BACKEND_URL")
-    or Path("/app/frontend/.env").read_text().split("REACT_APP_BACKEND_URL=", 1)[1].split("\n", 1)[0].strip()
-).rstrip("/")
-CHECKOUT = f"{BASE}/api/booking/checkout"
 
 sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
 

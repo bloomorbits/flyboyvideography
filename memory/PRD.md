@@ -241,6 +241,46 @@ clients, bookings, retainer_subscriptions, deliverables, review_threads, invoice
   live traffic). These are explicitly P0 blockers before real,
   high-value traffic hits `/book`, not deferrable ops nice-to-haves.
 
+## Security hardening (Feb 2026) — session 9, second pass
+Follow-up on the re-audit findings:
+- **SEC-001-residual FIXED** — `_rate_limit_or_429` now uses atomic
+  insert-then-count in `booking.py`. The attempt row is inserted BEFORE
+  the count query, so N concurrent racers each see a monotonically
+  increasing count under Postgres READ COMMITTED. Comparisons flipped
+  from `>=` to `>` accordingly. Re-ran the attack sim: scenario B (same
+  IP, varying email) correctly bounds successes at `RL_MAX_PER_IP + 1`
+  (the concurrent-lock cap catches the last one first).
+- **SEC-002-residual STILL OPEN** — fully contingent on PL-INFRA-1. See
+  CREDENTIAL_ROTATION.md; no additional app-layer mitigation planned.
+- **SEC-003 FIXED** — both `tests/sim_calendar_freeze_attack.py` and
+  `tests/test_booking_flow.py` now refuse to run without
+  `ALLOW_ATTACK_SIM=1` AND a URL matching a safe-marker allowlist
+  (`preview.emergentagent.com`, `localhost`, `127.0.0.1`, `staging`).
+- **PII hashing in forensic logs FIXED** — `_hash_email` (SHA-256[:16])
+  is used everywhere email would otherwise appear in a durable log:
+  `_log_bypass_forensics` stderr line + the new `rate_limit_events`
+  table (migration 008). `checkout_attempts.email` stays plaintext
+  (ephemeral 24h counter, not a log/audit record).
+- **CORS fail-closed** — `server.py` now uses an empty allowlist if
+  `CORS_ORIGINS` is unset/empty (was silently `*` before).
+- **Test fixture over-broad purge FIXED** — the autouse fixture in
+  `test_booking_flow.py` now scopes deletions to the run's unique
+  `EMAIL_PREFIX` only; the broad `%@example.com` etc. patterns were
+  removed.
+- **Runbook stale reference FIXED** — the `/api/_probe/ip` reference in
+  PL-INFRA-1's verify step now describes a reproducible temporary
+  probe pattern instead.
+- **`rate_limit_events` persistence added** (migration 008 pending user
+  application). `_log_bypass_forensics` writes to it best-effort with
+  fail-open behaviour; verified via attack sim that a missing table
+  triggers the fail-open path cleanly without bubbling exceptions.
+  Retention: 30 days via lazy-purge on write.
+
+### HARD GATE reminder (unchanged)
+No live-mode Stripe traffic until PL-INFRA-1 (XFF strip) AND PL-INFRA-2
+(CORS override) are verified resolved on the receiving deployment.
+
+
 
 ## Implemented (Feb 2026) — session 9 (Phase 1 Booking Flow)
 - Client-facing project booking (one-off, non-retainer) live on public Next.js

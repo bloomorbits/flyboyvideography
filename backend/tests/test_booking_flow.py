@@ -12,6 +12,24 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://db-bridge-5.preview.emergentagent.com").rstrip("/")
 
+# ---------- SAFETY GUARD (SEC-003 fix) ----------
+# This suite hits the live backend with the service-role key and creates
+# real Stripe test-mode sessions + date_slot_locks + auth users. Refuse to
+# collect if the target isn't a known-safe URL. Set ALLOW_ATTACK_SIM=1 to
+# opt in (see sim_calendar_freeze_attack.py for the same guard).
+_SAFE_URL_MARKERS = ("preview.emergentagent.com", "localhost", "127.0.0.1", "staging")
+if os.environ.get("ALLOW_ATTACK_SIM") != "1":
+    raise SystemExit(
+        "REFUSED: test_booking_flow.py mutates the live Supabase DB via the "
+        "service-role key and creates real Stripe test-mode sessions. Set "
+        "ALLOW_ATTACK_SIM=1 to run. Never set this on a production-connected shell."
+    )
+if not any(m in BASE_URL for m in _SAFE_URL_MARKERS):
+    raise SystemExit(
+        f"REFUSED: target URL {BASE_URL!r} does not match any known-safe pattern "
+        f"({_SAFE_URL_MARKERS!r}). Extend explicitly if genuinely intended."
+    )
+
 # Fixed test dates so the cleanup fixture can target them without needing to
 # thread state between tests.
 TEST_DATE_1 = (date.today() + timedelta(days=400)).isoformat()
@@ -65,13 +83,15 @@ def _clear_ratelimit_between_tests():
     from the same source IP would hit the cap around the 6th test. Purge
     the ledger between each test so tests remain independent.
 
-    Purges both this run's rows AND any leftover from earlier runs / ad-hoc
-    curl probes — anything on a `*@flyboytest.com`, `*@example.com`, or
-    `*@race.test` domain is by convention test-only."""
+    SCOPED PURGE (SEC-003 hardening): purge ONLY rows created by THIS
+    pytest run's unique EMAIL_PREFIX. Earlier iterations of this fixture
+    swept `%@example.com` and other broad patterns, which would have
+    wiped a real customer's rate-limit history if any of them happened
+    to use a test domain. Broad patterns removed 2026-02.
+    """
     from supabase import create_client
     sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
-    for pattern in (f"{EMAIL_PREFIX}%", "%@flyboytest.com", "%@example.com", "%@race.test", "z@z.com"):
-        sb.table("checkout_attempts").delete().ilike("email", pattern).execute()
+    sb.table("checkout_attempts").delete().ilike("email", f"{EMAIL_PREFIX}%").execute()
     yield
 
 

@@ -212,6 +212,20 @@ Stripe Dashboard. The change point is marked in code with a
 
 ## Pre-launch infra tasks (P0 — MUST be resolved before real, high-value traffic)
 
+> **HARD GATE (user directive, 2026-02):** NO live-mode Stripe traffic goes
+> to the `/book` page or the FastAPI booking endpoints until BOTH
+> **PL-INFRA-1** (XFF strip) and **PL-INFRA-2** (CORS override) are
+> verified resolved on the deployment that will receive real payments.
+> The layered defense shipped in the app (rate limiter + concurrent-lock
+> caps + global circuit breaker) is a MITIGATION not a FIX; it converts
+> the attack from "trivially freeze the calendar" into "requires a
+> sustained flood to hold the global brake open" — which is still a
+> customer-facing DoS. This gate is not a nice-to-have; it exists because
+> the residual DoS was flagged MEDIUM in the 2026-02 security audit
+> (SEC-002-residual) and both root causes live at the edge, not in the
+> application code. Do not promote the Stripe sandbox to live mode until
+> both PL-INFRA items are verified per their "Verify" sections below.
+
 These are edge/ingress-layer misconfigurations, not code bugs. They cannot
 be fully mitigated from the FastAPI app because the ingress runs *in
 front* of it and overrides headers on the way in and out. The layered
@@ -221,6 +235,14 @@ redirect; ALLOWED_ORIGIN_URLS + CORS_ORIGINS env vars) are mitigations,
 not fixes. Do not consider the SEC audit closed until these are done.
 
 ### PL-INFRA-1 [P0] — Strip client-supplied `X-Forwarded-For` at the edge
+
+**Related unresolved audit finding: SEC-002-residual [MEDIUM].** The
+global circuit breaker in `booking.py::_rate_limit_or_429` / `_concurrent_lock_or_429`
+converts a per-attacker DoS into a whole-site lockout because we cannot
+identify individual attackers under XFF spoofing. This is **fully
+contingent on PL-INFRA-1 completing** — no additional application-layer
+mitigation is planned or possible without a trustworthy client IP.
+Status: **STILL OPEN, mitigated only by PL-INFRA-1**.
 
 **Empirical finding (2026-02):** The Emergent preview ingress does NOT
 strip a client-supplied `X-Forwarded-For` prefix — it merely appends its
@@ -248,12 +270,15 @@ legitimate users.
    or equivalent in front that sets `CF-Connecting-IP` and drop trust
    in XFF entirely.
 
-**Verify:** Send `curl -H "X-Forwarded-For: 1.2.3.4" $DEPLOYED/api/_probe/ip`
-against production; expect `1.2.3.4` NOT to appear anywhere in the header
-FastAPI sees. Then confirm the rate limiter blocks a bot that varies XFF
-per-request within the per-IP limit (scenario C in
-`/app/backend/tests/sim_calendar_freeze_attack.py` should fire the
-per-IP cap around attempt 6, not the global one at 51).
+**Verify:** Send a probe request with a spoofed `X-Forwarded-For` prefix
+against the deployed backend, e.g. via a temporary probe endpoint added
+for the check (a 5-line FastAPI route that echoes back
+`request.headers.get("x-forwarded-for")`, `request.headers.get("x-real-ip")`,
+and `request.client.host`, then removed immediately after). Expect that
+`1.2.3.4` does NOT appear anywhere in the header FastAPI sees. Then
+re-run scenario C in `/app/backend/tests/sim_calendar_freeze_attack.py`
+against the deployed backend and confirm the **per-IP** cap fires around
+attempt 6, not the global one at attempt 51.
 
 ### PL-INFRA-2 [P0] — Do not inject `Access-Control-Allow-Origin: *` at the edge
 

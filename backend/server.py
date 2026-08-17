@@ -61,9 +61,19 @@ def get_sb():
     return sb
 
 app = FastAPI(title="Flyboy Videography Portal API")
+
+# SEC — CORS is fail-closed: an unset/empty CORS_ORIGINS env yields an
+# empty allow-list (no cross-origin requests permitted) instead of the
+# previous `*` fallback which was a silent security downgrade if the env
+# was ever forgotten during deploy. Set the env explicitly in production.
+# NOTE: on the current Emergent preview edge the ingress overrides ACAO
+# to `*` regardless — see CREDENTIAL_ROTATION.md PL-INFRA-2. The
+# app-layer setting still applies on direct-to-app deployments (Vercel,
+# self-hosted, prod Emergent Deploy once the CORS override is disabled).
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
