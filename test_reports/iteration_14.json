@@ -1,0 +1,20 @@
+{
+  "summary": "Phase 1 booking flow tested end-to-end. Backend: 8/8 pytest passing (availability shape, checkout happy path returning cs_test_/checkout.stripe.com, invalid package 422, past date 422 with 'future' message, duplicate-date 409 soft lock, status pending for created session, 404 for bogus session, webhook 400 without stripe-signature). Frontend: /book renders heading, all 5 pkg-* buttons, all 3 tier-* buttons, booking-datepicker, day-YYYY-MM-DD data-selectable=1 selection updates £200 deposit for Classic; step1-next reveals step 2 with input-full-name/email/phone/notes/pay-deposit-btn; empty submit does not crash; valid submit navigates to https://checkout.stripe.com/. /book/cancel shows 'No payment was taken.' with cancel-retry-cta href=/book. /book/success?session_id=cs_test_bogus does NOT 500 and renders success-error with 'Session not found'. SiteHeader nav-book navigates to /book.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_booking_flow.py", "/app/test_reports/pytest/booking_flow.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "booking.py is 664 lines — approaching the 700 line threshold. Consider splitting helpers (_ensure_auth_user, _generate_invite_link, _render_email, _send_confirmation_email) into a separate booking_helpers.py before adding Phase 2.",
+    "_finalise_paid_session catches unique_violation via substring matching on str(e). This works today but is brittle across supabase-py/postgrest versions; consider inspecting the exception's structured code/status attributes as a defensive layer.",
+    "/api/booking/status probes Stripe on every poll while payment_status != 'paid'. On the bogus-session path this is fine because the Supabase lookup 404s first, but consider a short in-process TTL cache to avoid hammering Stripe if the poller becomes chatty.",
+    "Test data left behind: test_checkout_valid_returns_stripe_url and test_checkout_same_date_lock_returns_409 insert booking_intents/payment_transactions/date_slot_locks rows tagged TEST_book@example.com — the 5-minute lock TTL will self-clean but the intents/tx rows persist. Consider a cleanup fixture using SUPABASE_SERVICE_ROLE_KEY."
+  ],
+  "updated_files": ["/app/backend/tests/test_booking_flow.py", "/app/test_reports/pytest/booking_flow.xml"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "n/a — booking flow is anonymous",
+  "seed_data_creation": "Two live Stripe test-mode checkout sessions created (cs_test_... for event_date +400d and +430d) with TEST_book@example.com. Sessions expire after 30 min; locks TTL 5 min.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All Phase 1 booking endpoints and UI selectors specified in the request work correctly. Test file /app/backend/tests/test_booking_flow.py is the regression suite. To retest UI you must use http://localhost:3001 (Next.js dev on 3001, not the ingress). Stripe redirect verified but stopped short of card entry as instructed."
+}

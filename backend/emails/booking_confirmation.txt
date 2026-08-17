@@ -1,0 +1,41 @@
+Your date is locked in, {{first_name}}.
+
+Thanks for booking with Flyboy Videography. Your {{package_title}}{{tier_suffix}}
+package is confirmed for {{event_date}}. Deposit received, date is now yours.
+
+PAYMENT SUMMARY
+  Deposit paid today: {{deposit_paid}}
+  Balance {{balance_due}} due by {{balance_due_by}} (3 days before your event).
+
+{{your_details_block_text}}
+SET UP YOUR PORTAL ACCESS
+We've created a client portal account for you where you'll review your films,
+approve cuts and pay the balance closer to the day. Set your password using
+the link below (valid for 24 hours):
+
+  {{invite_url}}
+
+Link expired? No problem — head to the portal login page and use "Forgot your
+password?" to get a fresh one instantly. Your account is already set up.
+
+WHAT HAPPENS NEXT
+  1. We'll email a short questionnaire about the day 2–3 weeks out — running
+     order, key people, any must-capture moments.
+  2. Balance invoice lands 5–7 days before the event.
+  3. On the day, we're on-site for your booked hours.
+  4. Films drop in your portal within the delivery window on your package.
+
+Anything to add, ask, or change — just reply to this email. We read every one.
+
+--
+Flyboy Videography
+hello@flyboyvideography.com · https://flyboyvideography.com
+Built by Bloomorbit Studio — https://bloomorbit.tech
+Privacy: https://flyboyvideography.com/privacy · Terms: https://flyboyvideography.com/terms
+
+--
+{{your_details_block_text}} composer (plaintext):
+  parts = []
+  if intent.phone:  parts.append(f"  Phone: {intent.phone}")
+  if intent.notes:  parts.append(f"  Notes: {intent.notes}")
+  return "" if not parts else "WHAT YOU TOLD US\n" + "\n".join(parts) + "\n\n"

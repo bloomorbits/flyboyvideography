@@ -11,6 +11,7 @@ import DeliverableDetail from "./pages/DeliverableDetail";
 import Invoices from "./pages/Invoices";
 import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
+import AdminSecurity from "./pages/AdminSecurity";
 
 function Protected({ children }) {
   const { session, loading } = useAuth();
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="/invoices" element={<Invoices />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/admin/security" element={<AdminSecurity />} />
           </Route>
         </Routes>
       </BrowserRouter>

@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from supabase import create_client
 
 load_dotenv(Path(__file__).parent / ".env")
@@ -19,15 +19,72 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 ADMIN_EMAILS = [e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()]
 
-sb = create_client(SUPABASE_URL, SERVICE_KEY)
+# Boot-time Supabase client init — hardened so a bad config produces a
+# clear, diagnosable failure via /api/health rather than a silent
+# import-time crash that supervisor loops on.
+#
+# Contract:
+#   - `sb` is either a live create_client() result, or None.
+#   - `SB_INIT_ERROR` carries the reason string when sb is None.
+#   - Any endpoint that touches Supabase must go through get_sb(),
+#     which returns 503 with a clear diagnostic if init failed.
+#   - /api/health reports the boot state without needing sb.
+sb = None
+SB_INIT_ERROR = None
+
+_missing = [
+    name for name, val in (
+        ("SUPABASE_URL", SUPABASE_URL),
+        ("SUPABASE_SERVICE_ROLE_KEY", SERVICE_KEY),
+    ) if not val
+]
+if _missing:
+    SB_INIT_ERROR = (
+        f"Missing required env var(s): {', '.join(_missing)}. "
+        f"Set them in backend/.env (or the deployment env store) and restart."
+    )
+    logging.error("Supabase client NOT initialized — %s", SB_INIT_ERROR)
+else:
+    try:
+        sb = create_client(SUPABASE_URL, SERVICE_KEY)
+    except Exception as _e:
+        SB_INIT_ERROR = f"create_client() failed: {type(_e).__name__}: {_e}"
+        logging.error("Supabase client NOT initialized — %s", SB_INIT_ERROR)
+
+
+def get_sb():
+    """Access the Supabase client from a request handler. Raises a
+    503 with the boot diagnostic if init failed, so callers see a
+    clear cause instead of an AttributeError on None."""
+    if sb is None:
+        raise HTTPException(503, f"Backend not initialized: {SB_INIT_ERROR}")
+    return sb
 
 app = FastAPI(title="Flyboy Videography Portal API")
+
+# SEC — CORS is fail-closed: an unset/empty CORS_ORIGINS env yields an
+# empty allow-list (no cross-origin requests permitted) instead of the
+# previous `*` fallback which was a silent security downgrade if the env
+# was ever forgotten during deploy. Set the env explicitly in production.
+# NOTE: on the current Emergent preview edge the ingress overrides ACAO
+# to `*` regardless — see CREDENTIAL_ROTATION.md PL-INFRA-2. The
+# app-layer setting still applies on direct-to-app deployments (Vercel,
+# self-hosted, prod Emergent Deploy once the CORS override is disabled).
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Client-facing booking flow (Phase 1) — see booking.py
+from booking import router as booking_router  # noqa: E402
+app.include_router(booking_router)
+
+# Public contact / enquiry form — see contact.py
+from contact import router as contact_router  # noqa: E402
+app.include_router(contact_router)
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -83,8 +140,36 @@ class EnsureBody(BaseModel):
 
 
 @app.get("/api/health")
-def health():
-    return {"status": "ok", "database": "supabase"}
+def health(response: Response):
+    """Live health check — pings Supabase with a lightweight query and a
+    short timeout. Returns 503 if the database is not reachable or the
+    backend never initialized, so monitoring / uptime tools see a real
+    failure instead of a false OK.
+    """
+    if sb is None:
+        response.status_code = 503
+        return {
+            "status": "unavailable",
+            "database": "supabase",
+            "error_class": "ConfigError",
+            "detail": SB_INIT_ERROR,
+        }
+    import socket as _socket
+    _prev = _socket.getdefaulttimeout()
+    _socket.setdefaulttimeout(2.0)
+    try:
+        sb.table("clients").select("id").limit(1).execute()
+        return {"status": "ok", "database": "supabase"}
+    except Exception as e:
+        logging.warning(f"/api/health probe failed: {type(e).__name__}: {e}")
+        response.status_code = 503
+        return {
+            "status": "unavailable",
+            "database": "supabase",
+            "error_class": type(e).__name__,
+        }
+    finally:
+        _socket.setdefaulttimeout(_prev)
 
 
 @app.post("/api/clients/ensure")
@@ -492,3 +577,54 @@ def admin_purge_seed_data(body: PurgeBody, admin=Depends(require_admin)):
         "skipped_clients_with_real_records": skipped_records,
         "audit_log": "erasure_audit_log preserved (compliance record)",
     }
+
+
+# ---------- Admin security dashboard endpoints (rate_limit_events) ----------
+
+import hashlib as _hashlib  # noqa: E402
+
+
+def _hash_email_for_search(email: str) -> str:
+    """Same truncation as booking.py::_hash_email — must stay in sync so
+    the search endpoint returns the events that _log_bypass_forensics
+    recorded for the given plaintext email."""
+    return _hashlib.sha256((email or "").strip().lower().encode()).hexdigest()[:16]
+
+
+@app.get("/api/admin/rate-limit-events")
+def list_rate_limit_events(limit: int = 100, user=Depends(require_admin)):
+    """Return the most recent N rate-limit events. Read-only.
+
+    Migration 008 must be applied; if not, an empty list is returned and
+    an operational note is logged — the UI stays functional but empty.
+    """
+    limit = max(1, min(500, limit))
+    try:
+        r = sb.table("rate_limit_events").select(
+            "id, reason, email_hash, ip, x_forwarded_for, x_real_ip, user_agent, created_at"
+        ).order("created_at", desc=True).limit(limit).execute()
+        return {"events": r.data or [], "limit": limit}
+    except Exception as e:
+        logging.info("rate_limit_events read skipped: %s", e)
+        return {"events": [], "limit": limit, "note": "rate_limit_events table not available"}
+
+
+class RateLimitSearchBody(BaseModel):
+    email: EmailStr
+
+
+@app.post("/api/admin/rate-limit-events/search")
+def search_rate_limit_events_by_email(body: RateLimitSearchBody, user=Depends(require_admin)):
+    """Suspect-email lookup: caller pastes plaintext email, server hashes
+    it (same algo as _log_bypass_forensics), returns matching events.
+    The plaintext email is NEVER stored — only hashed on the wire, hashed
+    at rest. That's the whole GDPR posture."""
+    ehash = _hash_email_for_search(str(body.email))
+    try:
+        r = sb.table("rate_limit_events").select(
+            "id, reason, email_hash, ip, x_forwarded_for, x_real_ip, user_agent, created_at"
+        ).eq("email_hash", ehash).order("created_at", desc=True).limit(500).execute()
+        return {"email_hash": ehash, "events": r.data or [], "count": len(r.data or [])}
+    except Exception as e:
+        logging.info("rate_limit_events search skipped: %s", e)
+        return {"email_hash": ehash, "events": [], "count": 0, "note": "rate_limit_events table not available"}

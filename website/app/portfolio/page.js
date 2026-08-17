@@ -49,13 +49,13 @@ export default function PortfolioPage() {
             >
               See services &amp; pricing
             </Link>
-            <a
-              href="mailto:hello@flyboyvideography.com"
+            <Link
+              href="/contact"
               data-testid="portfolio-enquire-cta"
               className="inline-block rounded-full border border-cream/40 px-8 py-3 font-medium text-cream transition-colors hover:bg-cream/10"
             >
               Enquire about your event
-            </a>
+            </Link>
           </div>
         }
       />

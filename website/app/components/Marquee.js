@@ -6,7 +6,7 @@ export default function Marquee({ items }) {
       </span>
     ));
   return (
-    <div data-testid="marquee-divider" className="overflow-hidden border-y border-dune bg-cream py-4" aria-hidden>
+    <div data-testid="marquee-divider" className="marquee-mask overflow-hidden border-y border-dune bg-cream py-4" aria-hidden>
       <div className="marquee-track flex w-max font-mono text-xs font-bold uppercase tracking-[0.3em] text-ink/50">
         <div className="flex shrink-0">{row("a")}</div>
         <div className="flex shrink-0">{row("b")}</div>
