@@ -210,6 +210,61 @@ The tax mode switch is a small code change (one branch in the
 Stripe Dashboard. The change point is marked in code with a
 `TAX MODE` comment near the `stripe.checkout.Session.create(...)` call.
 
+## GitHub repo ownership transfer (deferred until client handoff)
+
+The codebase currently lives at **`github.com/bloomorbits/flyboyvideography`**
+(Bloom Orbit-owned). Railway and Vercel are being connected to this repo
+during the 2026-02 cutover — this is deliberate for now, so Bloom Orbit
+retains push/deploy access during build-out. When the project is handed
+to the client, the repo will move to a client-owned location (either a
+transfer of the existing repo, or a fresh push to a client-created repo).
+
+**Critical, easy-to-miss step at handoff:** Transferring the repo alone
+is NOT sufficient. Railway's and Vercel's Git integrations are bound to
+the repo's Bloom Orbit-owned identity at the moment they were connected;
+transferring ownership of the GitHub repo does not automatically re-point
+those integrations. Both must be explicitly disconnected and re-authorised
+from the client's account.
+
+**Handoff checklist (repo + CI/CD):**
+
+1. Confirm client has GitHub organisation / user account ready to receive
+   the repo (or a new empty repo they've pre-created).
+2. **Repo:** Use GitHub's "Transfer ownership" flow
+   (Settings → Danger zone → Transfer) if keeping the same repo, OR push
+   this codebase to the client's fresh repo and archive the Bloom Orbit
+   copy. Preserve `main` branch history either way.
+3. **Railway:**
+   - Log into Railway as the client (they must create/own the Railway
+     project going forward — same principle as the Stripe KYC rule).
+   - In the FastAPI service → Settings → Source → **Disconnect** the
+     `bloomorbits/flyboyvideography` connection.
+   - Reconnect via the client's GitHub account, pointing at the new repo
+     location. Confirm the deploy branch (`main`) and root dir (`/backend`)
+     re-populate correctly.
+   - Trigger a manual redeploy, verify it picks up the client's GitHub
+     webhook (test: push a trivial change → confirm auto-deploy fires).
+4. **Vercel (Next.js public site):**
+   - Same pattern — Settings → Git → Disconnect, then reconnect via the
+     client's Vercel account (which must be linked to their GitHub).
+   - Verify the `NEXT_PUBLIC_*` env vars survived the disconnect (they're
+     stored on the Vercel project, not the Git connection — but confirm
+     empirically after reconnect, don't assume).
+   - Push a trivial change, confirm auto-deploy fires from the new
+     connection.
+5. **Vercel (CRA client portal), if separate project:** same as step 4.
+6. **Bloom Orbit access removal:** After the client confirms all three
+   redeploys work end-to-end, remove Bloom Orbit's GitHub access to the
+   repo (or accept the transfer completing this automatically), and
+   remove Bloom Orbit from Railway and Vercel project members.
+
+**Why this section exists:** it's the kind of infra-side detail that's
+invisible until it breaks. Left undocumented, a future agent (or future
+Nathan) transferring the repo will find CI/CD silently continuing to
+deploy from Bloom Orbit's GitHub identity, or — worse — will disconnect
+Bloom Orbit's GitHub access first and break production deploys until
+the client-side reconnect is figured out.
+
 ## Pre-launch infra tasks (P0 — MUST be resolved before real, high-value traffic)
 
 > **HARD GATE (user directive, 2026-02):** NO live-mode Stripe traffic goes

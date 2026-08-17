@@ -2,6 +2,10 @@
 
 **Read this alongside `/app/docs/CREDENTIAL_ROTATION.md § Pre-launch infra tasks`. Deploying to Railway + Vercel is the concrete action that resolves PL-INFRA-1 and PL-INFRA-2, closing the HARD GATE on live-mode Stripe.**
 
+## Repo ownership context (2026-02)
+
+Cutover connects Railway and Vercel to **`github.com/bloomorbits/flyboyvideography`** (Bloom Orbit-owned). This is deliberate during build-out. When the client takes ownership, transferring the GitHub repo alone is NOT sufficient — Railway and Vercel Git integrations must be explicitly disconnected and re-authorised from the client's account. Full checklist: `CREDENTIAL_ROTATION.md § GitHub repo ownership transfer`.
+
 ## Files added for the cutover (session 9)
 - `/app/backend/Procfile` — Railway entrypoint. **Uses `server:app`, not `main:app`.**
 - `/app/backend/.python-version` — pins Python 3.11 (matches the codebase's local venv).
