@@ -2,6 +2,15 @@
 
 **Read this alongside `/app/docs/CREDENTIAL_ROTATION.md § Pre-launch infra tasks`. Deploying to Railway + Vercel is the concrete action that resolves PL-INFRA-1 and PL-INFRA-2, closing the HARD GATE on live-mode Stripe.**
 
+## Deployed environments (as of 2026-02 cutover)
+
+| Env | Service | URL | Notes |
+|:----|:--------|:----|:------|
+| Prod | FastAPI backend (Railway) | `https://flyboyvideography.up.railway.app` | Railpack builder, `/backend` root dir, Procfile-driven, PORT 8080 target |
+| Prod | Next.js public site (Vercel) | `https://flyboyvideography.vercel.app` + custom `flyboyvideography.com` | Existing — needs `NEXT_PUBLIC_API_BASE` updated in Step 12 |
+| Prod | CRA client portal (Vercel) | *pending Step 9* | Will be `https://<subdomain>.vercel.app` |
+| Legacy | Preview pod | `https://db-bridge-5.preview.emergentagent.com` | Retire after Step 13 confirms end-to-end on prod |
+
 ## Repo ownership context (2026-02)
 
 Cutover connects Railway and Vercel to **`github.com/bloomorbits/flyboyvideography`** (Bloom Orbit-owned). This is deliberate during build-out. When the client takes ownership, transferring the GitHub repo alone is NOT sufficient — Railway and Vercel Git integrations must be explicitly disconnected and re-authorised from the client's account. Full checklist: `CREDENTIAL_ROTATION.md § GitHub repo ownership transfer`.
