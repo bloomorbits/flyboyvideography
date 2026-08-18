@@ -850,6 +850,39 @@ def _finalise_paid_session(session_id: str, payment_intent_id: Optional[str]) ->
             or "duplicate key" in msg
         )
         if is_race:
+            # SEC-001 (2026-02 audit): before assuming a cross-customer race
+            # and refunding, verify the winning booking on this date isn't
+            # OURS. The webhook and the /api/booking/status probe both call
+            # _finalise_paid_session for the same session; the Step-0
+            # check-then-insert idempotency guard is non-atomic, so under
+            # concurrent replay BOTH calls can pass Step 0 and BOTH can
+            # reach this insert — the loser sees a unique_violation whose
+            # "winner" is actually our own prior insert from THIS session.
+            # Refunding here would refund the legitimate paying customer.
+            winner = sb.table("bookings").select("id, stripe_session_id").eq(
+                "event_date", intent["event_date"]
+            ).eq("status", "confirmed").limit(1).execute().data
+            if winner and winner[0]["stripe_session_id"] == session_id:
+                log.info(
+                    "same-session concurrent replay for session %s — treating as idempotent success (no refund)",
+                    session_id,
+                )
+                # Self-heal: ensure tx + intent reflect paid state (winning
+                # path may already have done this, but a partial-crash
+                # window on the winner's side leaves tx=pending — heal it).
+                sb.table("payment_transactions").update({
+                    "status": "completed",
+                    "payment_status": "paid",
+                    "stripe_payment_intent_id": payment_intent_id or tx.get("stripe_payment_intent_id"),
+                    "updated_at": _now_iso(),
+                }).eq("session_id", session_id).eq("payment_status", "pending").execute()
+                sb.table("booking_intents").update({
+                    "status": "paid",
+                    "updated_at": _now_iso(),
+                }).eq("id", intent["id"]).eq("status", "pending").execute()
+                sb.table("date_slot_locks").delete().eq("session_id", session_id).execute()
+                return {"skipped": "same-session concurrent replay", "booking_id": winner[0]["id"]}
+
             log.warning("double-booking race — issuing refund for session %s", session_id)
             try:
                 pi = payment_intent_id or tx.get("stripe_payment_intent_id")
