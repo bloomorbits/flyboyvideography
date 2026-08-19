@@ -393,11 +393,8 @@ The remaining backlog, ordered as the user directed at end of session 9:
    don't wonder if the form worked.
 
 ### HARD GATES (do not skip when picking up)
-- **PL-INFRA-1 + PL-INFRA-2** unresolved — no live-mode Stripe traffic
-  until BOTH are verified fixed on the receiving deployment. See
-  `/app/docs/CREDENTIAL_ROTATION.md` § "Pre-launch infra tasks".
-- **SEC-002-residual** still open, fully contingent on PL-INFRA-1. Not
-  a separate launch blocker; automatically closed when PL-INFRA-1 is.
+- **PL-INFRA-1 + PL-INFRA-2** ~~unresolved~~ — **BOTH CLOSED on Railway (2026-02 cutover, session 10).** Empirical proof captured in `/app/docs/CREDENTIAL_ROTATION.md` under each PL-INFRA section (probe results table + scenario-C attack transcript). Live-mode Stripe from the edge-infra side is unblocked; PL-INFRA-3 (secret rotation) remains open, triggered when Stripe sandbox is claimed.
+- ~~**SEC-002-residual** still open, fully contingent on PL-INFRA-1.~~ — **CLOSED transitively** with PL-INFRA-1.
 - **Migration 010** will be needed for retainers. Follow the pattern
   from 006-009: file at `/app/supabase_migration_010_*.sql`, user
   applies manually in the Supabase SQL Editor, agent introspects to
@@ -409,3 +406,86 @@ The remaining backlog, ordered as the user directed at end of session 9:
 - Resend: transactional-only usage (booking confirmation + contact
   notification). `CONTACT_TO_EMAIL` env defaults to `ADMIN_EMAIL`.
 - Supabase: migrations 006-009 all applied and verified.
+
+
+## Infrastructure cutover (Feb 2026) — session 10 (Railway backend + P0 security closure)
+
+Tonight's session took the backend off the Emergent preview URL and onto
+production Railway infrastructure, closed the two P0 hard-gate items
+(PL-INFRA-1 XFF spoofing, PL-INFRA-2 CORS override), and fixed a HIGH
+payment-integrity race surfaced by the mid-cutover security audit
+(SEC-001 refund-race). Everything below verified empirically, not just
+via code review.
+
+### Deployed environments (canonical URLs)
+
+| Env | Service | URL | Notes |
+|:----|:--------|:----|:------|
+| Prod | FastAPI backend (Railway) | `https://flyboyvideography-production.up.railway.app` | Railpack builder, `/backend` root dir, PORT 8080 target, Procfile-driven |
+| Prod | Next.js public site (Vercel) | `https://flyboyvideography.vercel.app` + custom `flyboyvideography.com` | **Still pointed at PREVIEW backend via `NEXT_PUBLIC_API_BASE` — cutover happens in Step 12** |
+| Prod | CRA client portal (Vercel) | *not yet deployed — Step 9 pending* | |
+| Legacy | Preview pod | `https://db-bridge-5.preview.emergentagent.com` | Retire after Step 13 |
+
+### Cutover step status (as of end of session 10)
+
+| # | Step | Status |
+|:-:|:-----|:-------|
+| 0 | GitHub repo + client-ownership-transfer checklist | ✅ documented (`CREDENTIAL_ROTATION.md § GitHub repo ownership transfer`) |
+| 1 | Railway service + Railpack builder | ✅ (Nixpacks deprecated → Railpack; `/backend` root dir; PORT 8080) |
+| 2 | Env vars set (except `STRIPE_WEBHOOK_SECRET`) | ✅ |
+| 3 | Railway URL captured in docs | ✅ |
+| 4 | Stripe webhook created, `STRIPE_WEBHOOK_SECRET` set, test webhook `200` | ✅ |
+| — | **SEC-001 payment-integrity race fix** (audit-triggered mid-cutover) | ✅ code + regression pytest + empirical smoke-test proof |
+| 5 | Real end-to-end smoke test (real Stripe test-mode payment against Railway) | ✅ full chain verified: booking row, tx=paid, clients row, Resend email delivered, status endpoint, `date_slot_locks` cleaned up |
+| 6-8 | XFF/CORS empirical verification + `_client_ip()` hardening | ✅ PL-INFRA-1 + PL-INFRA-2 CLOSED |
+| 9 | Vercel CRA client portal deployment | ⏳ **NEXT SESSION** |
+| 10 | Full end-to-end on Vercel portal + Railway | ⏳ |
+| 11 | Seed-data purge via Admin Danger Zone + manual SQL | ⏳ |
+| 12 | Update `NEXT_PUBLIC_API_BASE` on Next.js Vercel project, redeploy | ⏳ |
+| 13 | Live end-to-end verify on `flyboyvideography.com` | ⏳ |
+| 14 | Retire Emergent-preview Stripe webhook, mark PL-INFRA-1/2 verified-resolved | ⏳ |
+
+### Key code changes (session 10)
+
+- **`backend/booking.py` — `_client_ip()` refactor** (lines 150-183): now prefers `X-Real-IP` → leftmost XFF → `client.host` fallback. Docstring documents Railway's empirical strip behaviour AND warns future agents to re-probe if deployment ever moves off Railway. XFF trust is a deployment-property, not an application-property.
+- **`backend/booking.py` — SEC-001 fix** (lines 843-877): new guard branch in `_finalise_paid_session` unique-violation handler. Before refunding, checks whether the winning booking's `stripe_session_id` matches ours. If yes → same-session concurrent replay (webhook + `/status` probe race) → treat as idempotent success, no refund. Only refund on genuine cross-session race.
+- **`backend/tests/test_booking_concurrency.py`** — new pytest `test_same_session_concurrent_finalise_does_not_refund_customer` locks in the SEC-001 fix. Empirically validated: reverts to buggy code make the test fail with a clear regression message; restoring the fix makes it pass. Both concurrency tests (existing multi-session + new same-session) pass together in the suite.
+- **`backend/requirements.txt`** — removed `emergentintegrations==0.2.0` and the `litellm` CDN-hosted wheel. Both were unused dead code from the Emergent CRA+FastAPI scaffold; both fail to resolve outside Emergent's build environment (private PyPI index / internal CDN URL). If ANY future `pip freeze` inside the preview pod regenerates `requirements.txt`, these will come back and Railway will fail. Fix is to re-remove.
+- **`backend/Procfile`**, **`backend/.python-version`**, **`frontend/vercel.json`** — deployment config files (created earlier session, retained). Procfile uses `server:app` NOT `main:app`.
+- **Probe endpoint `/api/_probe/ip`** was added, used to empirically verify Railway XFF/X-Real-IP stripping, then deleted in the same commit as the `_client_ip()` update. Confirmed absent post-redeploy (`curl` returns 404). No permanent header-echo attack surface.
+- **`backend/tests/_scenario_c_railway.py`** — one-shot rate-limiter attack sim runner, hit Railway 7 times to prove PL-INFRA-1 empirically, then deleted. Kept to the "no drifting temporary fixtures" principle. Reproducible from git history if needed again.
+
+### Documentation changes (session 10)
+
+- **`/app/docs/CREDENTIAL_ROTATION.md`**:
+  - New rotation-log rows for Railway cutover.
+  - New "GitHub repo ownership transfer" section (parallel to Stripe's "Ownership handoff") — covers the easy-to-miss step of disconnecting/re-authorising Railway's AND Vercel's Git integrations from the client's account when the repo is transferred. Not just transferring the repo.
+  - PL-INFRA-1 section: empirical proof table (spoofed inputs vs actual header values) + full scenario-C attack transcript (attempts 1-7, per-IP concurrent-lock cap firing at attempt 4, per-IP rate cap firing at attempt 6).
+  - PL-INFRA-2 section: empirical proof (curl outputs showing Railway echoes only legit origins, drops the ACAO header entirely for evil origins, preflight from evil origin returns 400).
+  - "HARD GATE STATUS" callout under the Pre-launch infra tasks heading now shows both P0 items CLOSED.
+- **`/app/docs/RAILWAY_VERCEL_CUTOVER.md`**:
+  - "Deployed environments" table at the top with canonical URLs.
+  - "Domain gotcha" section: Railway's auto-generated `<service>-<env>.up.railway.app` domain is the ONLY one that should be trusted; the custom-short domain wizard is a footgun that drifted on redeploy during initial cutover attempt.
+  - "Emergent-only dependencies removed from requirements.txt" section.
+  - "Repo ownership context" pointer at the top → CREDENTIAL_ROTATION.md handoff checklist.
+
+### Empirical verification evidence (all captured in CREDENTIAL_ROTATION.md)
+
+- **XFF/X-Real-IP strip:** probe endpoint results for baseline + 4 spoofing tests. Pod public IP `34.16.56.64`. Spoofed values `1.2.3.4`, `5.6.7.8`, multi-hop XFF chains — all dropped, all headers replaced with pod IP.
+- **CORS:** legit origin echoed correctly, evil origin gets no ACAO header, preflight from evil origin rejected 400.
+- **Rate limiter behavioural proof:** on Railway, per-IP concurrent-lock cap (LOCK_CAP_PER_IP=3) fires at attempt 4, per-IP rate cap (RL_MAX_PER_IP=5) fires at attempt 6 — as designed. On Emergent preview the same attack needed attempt ~50-100 (global caps only) because XFF was spoofable.
+- **SEC-001 fix under real production race:** end-to-end smoke test with real Stripe test-mode payment showed `payment_transactions.payment_status = 'paid'`, NOT `refunded_race`. Fix confirmed under the actual webhook + status-poll race.
+
+### Backlog after session 10
+
+Order preserved from session 9, with `SEC-001`, `PL-INFRA-1`, `PL-INFRA-2` all struck through as resolved. The critical work ahead is FRONTEND cutover (Steps 9-14), not backend features. **Feature freeze on the P1 backlog (Retainer signup, Enquiry Inbox, Portal restyle, Welcome tour, etc.) remains in effect until the full cutover ships.**
+
+### Next-session pickup for a fresh agent
+
+1. Read `/app/docs/RAILWAY_VERCEL_CUTOVER.md` (deployed environments table at top).
+2. Read `/app/docs/CREDENTIAL_ROTATION.md` § "HARD GATE STATUS" (confirms P0 items closed).
+3. Confirm with user that they want to proceed to **Step 9 (Vercel CRA portal deployment)** — user's approach for the whole cutover has been "one step at a time, confirm what happened before moving on."
+4. Step 9 details from the runbook: create Vercel project → connect `bloomorbits/flyboyvideography` → root dir `/frontend` → set `REACT_APP_BACKEND_URL=https://flyboyvideography-production.up.railway.app` in Vercel env → deploy → capture subdomain → add subdomain to Railway's `CORS_ORIGINS` + `ALLOWED_ORIGIN_URLS` + `PORTAL_URL` → redeploy Railway.
+5. **Do NOT** touch the `NEXT_PUBLIC_API_BASE` on the Next.js Vercel project yet — that's Step 12.
+6. **Do NOT** purge seed data yet — that's Step 11, after Step 10's end-to-end verification confirms the new stack works.
+7. Test credentials for post-Vercel-deploy portal login are unchanged from session 9 — see `/app/memory/test_credentials.md`.
