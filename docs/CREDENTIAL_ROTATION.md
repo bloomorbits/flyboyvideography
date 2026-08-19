@@ -365,6 +365,35 @@ new target BEFORE trusting `_client_ip()`. XFF trust is a
 deployment-property, not an application-property. See the docstring on
 `_client_ip()` for the re-verification path.
 
+**Rate-limiter behavioural proof on Railway (2026-02):** Ran the
+scenario-C attack pattern (new spoofed `X-Forwarded-For` + new email
+per request) against `/api/booking/checkout`. Results:
+
+```
+attempt  1  spoof_XFF=203.0.113.1   HTTP 200  cs_test_a1a1gT...
+attempt  2  spoof_XFF=203.0.113.2   HTTP 200  cs_test_a1BO4A...
+attempt  3  spoof_XFF=203.0.113.3   HTTP 200  cs_test_a1abmm...
+attempt  4  spoof_XFF=203.0.113.4   HTTP 429  "Too many pending bookings from your network..." (LOCK_CAP_PER_IP=3)
+attempt  5  spoof_XFF=203.0.113.5   HTTP 429  "Too many pending bookings from your network..."
+attempt  6  spoof_XFF=203.0.113.6   HTTP 429  "Too many booking attempts from your network..." (RL_MAX_PER_IP=5)
+attempt  7  spoof_XFF=203.0.113.7   HTTP 429  "Too many booking attempts from your network..."
+```
+
+Per-IP concurrent-lock cap fires at attempt 4 (LOCK_CAP_PER_IP=3, so the
+4th attempt exceeds), then the per-IP rate cap fires at attempt 6
+(RL_MAX_PER_IP=5). On Emergent preview the same attack pattern needed
+attempt ~50 (LOCK_CAP_GLOBAL) or ~100 (RL_MAX_GLOBAL) to trigger,
+because spoofed XFF let each attempt look like a different IP. The
+per-IP defenses working as designed is the direct behavioural
+consequence of Railway stripping spoofed XFF.
+
+The ad-hoc script used for this run (`backend/tests/_scenario_c_railway.py`)
+was deleted immediately after empirical proof was captured, matching the
+"no drifting temporary fixtures" principle also applied to the probe
+endpoint. To re-verify against a future deployment target, use the
+existing `sim_calendar_freeze_attack.py::scenario_c()` with an override
+of `_SAFE_URL_MARKERS`.
+
 ### PL-INFRA-2 [P0] — Do not inject `Access-Control-Allow-Origin: *` at the edge
 
 **Empirical finding (2026-02):** The Emergent preview ingress rewrites
