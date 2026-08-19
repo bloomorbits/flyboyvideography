@@ -282,6 +282,11 @@ the client-side reconnect is figured out.
 > application code. Do not promote the Stripe sandbox to live mode until
 > both PL-INFRA items are verified per their "Verify" sections below.
 
+> **HARD GATE STATUS (2026-02 Railway cutover):**
+> - **PL-INFRA-1** — CLOSED on Railway. Empirical proof in section below. `_client_ip()` updated to prefer `X-Real-IP`.
+> - **PL-INFRA-2** — CLOSED on Railway. Empirical proof in section below. Railway does not rewrite `Access-Control-Allow-Origin`.
+> - Live-mode Stripe traffic is now unblocked from the edge-infrastructure side. PL-INFRA-3 (secret rotation) remains open by design — triggered when the Stripe sandbox is claimed to a live account.
+
 These are edge/ingress-layer misconfigurations, not code bugs. They cannot
 be fully mitigated from the FastAPI app because the ingress runs *in
 front* of it and overrides headers on the way in and out. The layered
@@ -335,6 +340,30 @@ and `request.client.host`, then removed immediately after). Expect that
 re-run scenario C in `/app/backend/tests/sim_calendar_freeze_attack.py`
 against the deployed backend and confirm the **per-IP** cap fires around
 attempt 6, not the global one at attempt 51.
+
+**Verified resolved on Railway (2026-02 cutover):**
+Empirical probe (`/api/_probe/ip`, temporary — deleted immediately after
+verification) results with pod public IP `34.16.56.64`:
+
+| Test | Spoof sent | `x_forwarded_for` seen | `x_real_ip` seen | Verdict |
+|:-----|:-----------|:-----------------------|:-----------------|:--------|
+| A | `XFF: 1.2.3.4` | `34.16.56.64, 152.233.39.34` | `34.16.56.64` | spoof dropped |
+| B | `X-Real-IP: 5.6.7.8` | `34.16.56.64, 152.233.39.33` | `34.16.56.64` | spoof dropped |
+| C | both | `34.16.56.64, 152.233.39.33` | `34.16.56.64` | both dropped |
+| D | multi-hop XFF | `34.16.56.64, 152.233.39.33` | `34.16.56.64` | all hops dropped |
+
+Railway's ingress replaces both `X-Real-IP` and `X-Forwarded-For` at the
+edge — spoofed values never reach FastAPI. `_client_ip()` in
+`booking.py:150` was updated to prefer `X-Real-IP` (with leftmost-XFF
+fallback and `request.client.host` as final fallback). The probe endpoint
+was deleted in the same commit as the `_client_ip()` update — verified
+absent via `curl https://flyboyvideography-production.up.railway.app/api/_probe/ip`
+returning `404 Not Found` post-redeploy. PL-INFRA-1 is CLOSED on Railway.
+
+**IF THE DEPLOYMENT EVER MOVES OFF RAILWAY:** re-run the probe against the
+new target BEFORE trusting `_client_ip()`. XFF trust is a
+deployment-property, not an application-property. See the docstring on
+`_client_ip()` for the re-verification path.
 
 ### PL-INFRA-2 [P0] — Do not inject `Access-Control-Allow-Origin: *` at the edge
 
