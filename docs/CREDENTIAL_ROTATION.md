@@ -144,6 +144,7 @@ renamed or removed, update the `CANARY_PATH` variable in
 |:-----|:-----------|:----------------|:-----------------|:----------------|:------|
 | 2026-02 | Supabase service-role | GitHub push-protection block on hardcoded test-file literal; history rewritten; provider key rotated | yes (post backend restart) | yes (via /api/admin/erasure-audit canary) | Backend needed manual `supervisorctl restart` in preview — hot-reload does not re-read `.env`. |
 | 2026-02 | Stripe sandbox provisioned | Phase 1 booking flow — claimable sandbox `acct_1U4cyqEemFmdl6rE`, job_id below | yes (backend restarted, /api/health returned 200) | not yet deployed | Test mode only. Not yet claimed to a live Stripe account (deferred until client is ready — see Ownership handoff section). |
+| 2026-02 | Railway backend cutover | Migrating off Emergent preview to `https://flyboyvideography-production.up.railway.app` (PL-INFRA-1/2 hard gate) | yes (via `/api/health` returning `{"status":"ok","database":"supabase"}`) | in progress — Stripe webhook + full smoke test still pending | Railpack builder (Nixpacks deprecated), `/backend` root dir, target port 8080. Emergent-only deps (`emergentintegrations`, `litellm` CDN wheel) removed from requirements.txt to unblock build. Canonical URL is `-production` auto-domain; custom-short domain (`flyboyvideography.up.railway.app`) was created initially but drifted out of sync on redeploy and was retired. |
 
 ## Stripe sandbox (provisioned 2026-02)
 

@@ -200,3 +200,125 @@ def test_only_one_confirmed_booking_wins_under_concurrent_inserts():
     # 6. No dangling date_slot_lock for the winner (finaliser deletes it).
     remaining_locks = sb.table("date_slot_locks").select("*").eq("event_date", PROBE_DATE).execute().data
     assert remaining_locks == [], f"expected no locks, got {remaining_locks}"
+
+
+def test_same_session_concurrent_finalise_does_not_refund_customer():
+    """SEC-001 regression (2026-02 security audit): the Stripe webhook and
+    the /api/booking/status probe both call _finalise_paid_session for the
+    same session_id after a successful payment. The Step-0 idempotency check
+    at booking.py:792 is a non-atomic check-then-insert, so under concurrent
+    replay both calls can pass Step 0 and both can reach the bookings INSERT.
+    The loser sees a unique_violation whose "winner" is OUR OWN row from
+    this same session — refunding here would refund the paying customer.
+
+    This test proves the fix: fire two _finalise_paid_session calls for the
+    SAME session concurrently, assert exactly one confirmed booking exists,
+    stripe.Refund.create was NEVER called, and the tx settles as paid — not
+    refunded_race.
+    """
+    session_id, pi_id = _seed_intent_and_tx(0)
+
+    refund_calls = []
+
+    def _fake_refund_create(**kwargs):
+        refund_calls.append(kwargs)
+        return {"id": f"re_test_{uuid.uuid4().hex[:16]}", "status": "succeeded", **kwargs}
+
+    def _stub_invite(email): return f"https://portal.test/set-password?email={email}"
+    def _stub_send(*a, **kw): return None
+    def _stub_ensure_auth_user(sb_, email, full_name):
+        return f"user_{uuid.uuid4().hex[:16]}"
+
+    admins = sb.table("clients").select("id").limit(1).execute().data
+    assert admins, "need at least one existing clients row for the same-session test FK"
+    shared_client_id = admins[0]["id"]
+
+    def _stub_ensure_client(sb_, user_id, email, full_name, phone):
+        return shared_client_id
+
+    def _run(_ignored):
+        try:
+            return booking._finalise_paid_session(session_id, pi_id)
+        except Exception as e:
+            return {"error": f"{type(e).__name__}: {e}"}
+
+    # Two concurrent finalisers for the SAME session — simulates webhook +
+    # /status probe firing simultaneously on a happy-path booking.
+    with patch("booking.stripe.Refund.create", side_effect=_fake_refund_create), \
+         patch("booking._generate_invite_link", side_effect=_stub_invite), \
+         patch("booking._send_confirmation_email", side_effect=_stub_send), \
+         patch("booking._ensure_auth_user", side_effect=_stub_ensure_auth_user), \
+         patch("booking._ensure_client_row", side_effect=_stub_ensure_client):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            results = list(ex.map(_run, [None, None]))
+
+    # Same transient-HTTP retry pattern as the multi-session race test —
+    # a `RemoteProtocolError` from a shared client pool exhausting under
+    # rapid test suite runs is orthogonal to what we're testing here; in
+    # production Stripe would redeliver the webhook (which is what this
+    # retry loop simulates).
+    with patch("booking.stripe.Refund.create", side_effect=_fake_refund_create), \
+         patch("booking._generate_invite_link", side_effect=_stub_invite), \
+         patch("booking._send_confirmation_email", side_effect=_stub_send), \
+         patch("booking._ensure_auth_user", side_effect=_stub_ensure_auth_user), \
+         patch("booking._ensure_client_row", side_effect=_stub_ensure_client):
+        for i, r in enumerate(results):
+            if isinstance(r, dict) and "error" in r:
+                try:
+                    results[i] = booking._finalise_paid_session(session_id, pi_id)
+                except Exception as e:
+                    results[i] = {"error_retry": f"{type(e).__name__}: {e}"}
+
+    # 1. Exactly one confirmed booking, and it belongs to OUR session.
+    confirmed = sb.table("bookings").select("id, stripe_session_id").eq(
+        "event_date", PROBE_DATE
+    ).eq("status", "confirmed").execute().data
+    assert len(confirmed) == 1, (
+        f"expected 1 confirmed booking, got {len(confirmed)}: {confirmed}\n"
+        f"finaliser results: {results}"
+    )
+    assert confirmed[0]["stripe_session_id"] == session_id, (
+        f"confirmed booking belongs to a different session: {confirmed[0]}"
+    )
+
+    # 2. The tx MUST be paid — NOT refunded_race. This is the SEC-001 gate.
+    tx_after = sb.table("payment_transactions").select("status, payment_status").eq(
+        "session_id", session_id
+    ).limit(1).execute().data[0]
+    assert tx_after["payment_status"] == "paid", (
+        f"SEC-001 REGRESSION: payment_transactions.payment_status is {tx_after['payment_status']!r}, "
+        f"expected 'paid'. The paying customer was refunded by the concurrent-replay path. "
+        f"Full tx state: {tx_after}"
+    )
+    assert tx_after["status"] == "completed", (
+        f"SEC-001 REGRESSION: payment_transactions.status is {tx_after['status']!r}, "
+        f"expected 'completed'. Full tx state: {tx_after}"
+    )
+
+    # 3. Stripe.Refund.create MUST NOT have been called for this session.
+    assert refund_calls == [], (
+        f"SEC-001 REGRESSION: stripe.Refund.create was invoked {len(refund_calls)} times "
+        f"during a same-session concurrent replay. Refund payload(s): {refund_calls}"
+    )
+
+    # 4. Both finaliser calls returned without raising (possibly via retry).
+    assert all(
+        isinstance(r, dict) and "error" not in r and "error_retry" not in r
+        for r in results
+    ), (
+        f"one or both concurrent finalisers failed even after retry: {results}"
+    )
+
+    # 5. Exactly one call reports "finalised" via the winner path; the other
+    #    reports either "already finalised" (Step-0 caught it) OR
+    #    "same-session concurrent replay" (unique-violation caught it).
+    #    Both are correct idempotent outcomes.
+    skipped_reasons = {r.get("skipped") for r in results if isinstance(r, dict) and "skipped" in r}
+    allowed_skipped = {"already finalised", "same-session concurrent replay"}
+    assert skipped_reasons.issubset(allowed_skipped), (
+        f"unexpected skipped-reason from concurrent replay: {skipped_reasons}"
+    )
+
+    # 6. No dangling date_slot_lock.
+    remaining_locks = sb.table("date_slot_locks").select("*").eq("event_date", PROBE_DATE).execute().data
+    assert remaining_locks == [], f"expected no locks, got {remaining_locks}"
