@@ -366,6 +366,12 @@ curl -i -H "Origin: https://evil.example.com" $DEPLOYED/api/health \
 Expect NO `access-control-allow-origin` header (or one that echoes only
 allow-listed origins), never `*`.
 
+**Verified resolved on Railway (2026-02 cutover):**
+- `curl -i -H "Origin: https://flyboyvideography.com" https://flyboyvideography-production.up.railway.app/api/health` → `access-control-allow-origin: https://flyboyvideography.com` (correct echo)
+- `curl -i -H "Origin: https://evil.example.com" https://flyboyvideography-production.up.railway.app/api/health` → **no `access-control-allow-origin` header at all** (Railway does not rewrite to `*`)
+- `curl -i -X OPTIONS -H "Origin: https://evil.example.com" -H "Access-Control-Request-Method: POST" https://flyboyvideography-production.up.railway.app/api/booking/checkout` → `HTTP/2 400`, preflight rejected
+- PL-INFRA-2 is CLOSED on Railway. PL-INFRA-1 (XFF trust) remains open pending probe results.
+
 ### PL-INFRA-3 [P0] — Rotate all secrets before live traffic
 
 The `.env` currently in the preview pod holds:
