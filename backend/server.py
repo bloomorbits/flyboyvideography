@@ -172,43 +172,6 @@ def health(response: Response):
         _socket.setdefaulttimeout(_prev)
 
 
-# ============================================================================
-# TEMPORARY — PL-INFRA-1 verification probe (2026-02 Railway cutover)
-# ============================================================================
-# Purpose: empirically test whether Railway's ingress strips client-supplied
-# `X-Forwarded-For` and `X-Real-IP` headers, or passes them through verbatim
-# to FastAPI. Emergent preview passed them through (allowing IP spoofing);
-# Railway's behaviour must be verified, not assumed. See
-# CREDENTIAL_ROTATION.md § PL-INFRA-1 for full context.
-#
-# HOW TO USE:
-#   curl -H "X-Forwarded-For: 1.2.3.4" \
-#        -H "X-Real-IP: 5.6.7.8" \
-#        -H "CF-Connecting-IP: 9.9.9.9" \
-#        https://flyboyvideography-production.up.railway.app/api/_probe/ip
-#
-# Compare the response values against the spoofed inputs above:
-#   - If x_forwarded_for contains "1.2.3.4" -> Railway does NOT strip XFF
-#     (same problem as Emergent, need Cloudflare Worker or similar).
-#   - If x_real_ip == "5.6.7.8" -> Railway does NOT strip X-Real-IP.
-#   - If EITHER contains the caller's actual public IP instead -> Railway
-#     stripped the spoof and is safe to trust that header in _client_ip().
-#
-# REMOVE THIS ENDPOINT IMMEDIATELY AFTER PL-INFRA-1 IS RESOLVED. Leaving a
-# header-echo endpoint in production is a minor recon surface.
-# ============================================================================
-@app.get("/api/_probe/ip")
-def _probe_ip(request: Request):
-    return {
-        "client_host": request.client.host if request.client else None,
-        "x_forwarded_for": request.headers.get("x-forwarded-for"),
-        "x_real_ip": request.headers.get("x-real-ip"),
-        "cf_connecting_ip": request.headers.get("cf-connecting-ip"),
-        "forwarded": request.headers.get("forwarded"),
-        "railway_original_client": request.headers.get("x-envoy-external-address"),
-    }
-
-
 @app.post("/api/clients/ensure")
 def ensure_client(body: EnsureBody, user=Depends(get_auth_user)):
     sweep_overdue_invoices()

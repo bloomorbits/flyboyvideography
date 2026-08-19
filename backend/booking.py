@@ -148,20 +148,35 @@ def _now_iso() -> str:
 # ---------- SEC-001 rate limiter ----------
 
 def _client_ip(request: Request) -> str:
-    """Best-effort client IP extraction. On the current Emergent edge,
-    X-Forwarded-For is NOT stripped — a client can prepend arbitrary
-    values. So the leftmost XFF value is used as best-effort only; the
-    global caps are the actual anti-calendar-freeze backstop, and every
-    429 logs the raw headers so we can retro-detect bypass attempts.
+    """Client IP extraction, hardened for the Railway edge.
 
-    See CREDENTIAL_ROTATION.md → 'Pre-launch infra tasks' for the ops-side
-    fix that would make this header trustworthy.
+    Empirical result of PL-INFRA-1 verification (2026-02, see
+    CREDENTIAL_ROTATION.md § 'Pre-launch infra tasks'): Railway's ingress
+    strips ALL client-supplied `X-Real-IP` and `X-Forwarded-For` headers
+    and sets them from its own view of the TCP peer. Verified with
+    spoofed inputs `X-Real-IP: 5.6.7.8` and `X-Forwarded-For: 1.2.3.4`
+    both being completely dropped and replaced with the actual public
+    IP of the caller.
+
+    Preference order:
+      1. X-Real-IP — single-value, Railway-set on every request, cannot
+         be spoofed because Railway overwrites it at the edge.
+      2. Leftmost X-Forwarded-For — same-source guarantee on Railway;
+         still preferred over #3 because it matches proxy convention.
+      3. request.client.host — CGNAT-space Railway internal address
+         (100.64.0.0/10); the TCP peer from FastAPI's perspective. Safe
+         fallback if both headers somehow disappear.
+
+    DO NOT REVERT this to trust XFF-leftmost blindly if the deployment
+    ever moves off Railway. The XFF trust boundary is deployment-specific
+    and must be re-verified with an /api/_probe/ip endpoint against the
+    new target BEFORE any code here assumes headers are trustworthy.
     """
+    real_ip = (request.headers.get("x-real-ip") or "").strip()
+    if real_ip:
+        return real_ip
     xff = request.headers.get("x-forwarded-for") or ""
     if xff:
-        # Leftmost value is the (best-effort) originating client. Strip
-        # whitespace; if the client sent gibberish we still get a stable
-        # per-client bucket, just an easily-spoofable one.
         return xff.split(",")[0].strip() or (request.client.host if request.client else "unknown")
     return request.client.host if request.client else "unknown"
 
