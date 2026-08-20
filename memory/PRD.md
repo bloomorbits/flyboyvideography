@@ -423,7 +423,7 @@ via code review.
 |:----|:--------|:----|:------|
 | Prod | FastAPI backend (Railway) | `https://flyboyvideography-production.up.railway.app` | Railpack builder, `/backend` root dir, PORT 8080 target, Procfile-driven |
 | Prod | Next.js public site (Vercel) | `https://flyboyvideography.vercel.app` + custom `flyboyvideography.com` | **Still pointed at PREVIEW backend via `NEXT_PUBLIC_API_BASE` — cutover happens in Step 12** |
-| Prod | CRA client portal (Vercel) | *not yet deployed — Step 9 pending* | |
+| Prod | CRA client portal (Vercel) | `https://flyboyvideography-portal.vercel.app` | Live as of end of session 10. `REACT_APP_BACKEND_URL` points at Railway. Talks to Supabase directly for RLS-protected reads + Railway for `/api/*`. |
 | Legacy | Preview pod | `https://db-bridge-5.preview.emergentagent.com` | Retire after Step 13 |
 
 ### Cutover step status (as of end of session 10)
@@ -438,8 +438,8 @@ via code review.
 | — | **SEC-001 payment-integrity race fix** (audit-triggered mid-cutover) | ✅ code + regression pytest + empirical smoke-test proof |
 | 5 | Real end-to-end smoke test (real Stripe test-mode payment against Railway) | ✅ full chain verified: booking row, tx=paid, clients row, Resend email delivered, status endpoint, `date_slot_locks` cleaned up |
 | 6-8 | XFF/CORS empirical verification + `_client_ip()` hardening | ✅ PL-INFRA-1 + PL-INFRA-2 CLOSED |
-| 9 | Vercel CRA client portal deployment | ⏳ **NEXT SESSION** |
-| 10 | Full end-to-end on Vercel portal + Railway | ⏳ |
+| 9 | Vercel CRA client portal deployment + CORS allowlist reconciliation | ✅ portal live at `flyboyvideography-portal.vercel.app`; Railway `CORS_ORIGINS` + `ALLOWED_ORIGIN_URLS` + `PORTAL_URL` updated; localhost drift cleaned up; second security audit PASSED; full CORS-drift root-cause documented in `CREDENTIAL_ROTATION.md § Railway Variables change-control` |
+| 10 | Full end-to-end on Vercel portal + Railway | ⏳ **NEXT SESSION — meaty step** |
 | 11 | Seed-data purge via Admin Danger Zone + manual SQL | ⏳ |
 | 12 | Update `NEXT_PUBLIC_API_BASE` on Next.js Vercel project, redeploy | ⏳ |
 | 13 | Live end-to-end verify on `flyboyvideography.com` | ⏳ |
@@ -482,10 +482,20 @@ Order preserved from session 9, with `SEC-001`, `PL-INFRA-1`, `PL-INFRA-2` all s
 
 ### Next-session pickup for a fresh agent
 
+**⚠ Step 10 is a substantial step, not a quick one.** It's the real end-to-end validation of the entire new stack (Vercel portal + Railway backend + Supabase + Stripe test-mode + Resend). Expect: real Stripe test-mode checkout via curl against Railway, complete payment with `4242 4242 4242 4242`, wait for confirmation email to arrive via Resend, click the magic link, land on the Vercel portal (NOT the preview pod — `PORTAL_URL` was cut over in Step 9.6), confirm session establishes on the portal, verify all four DB effects match Step 5's success criteria. Budget the session accordingly — this is not a "small check-in" step.
+
 1. Read `/app/docs/RAILWAY_VERCEL_CUTOVER.md` (deployed environments table at top).
-2. Read `/app/docs/CREDENTIAL_ROTATION.md` § "HARD GATE STATUS" (confirms P0 items closed).
-3. Confirm with user that they want to proceed to **Step 9 (Vercel CRA portal deployment)** — user's approach for the whole cutover has been "one step at a time, confirm what happened before moving on."
-4. Step 9 details from the runbook: create Vercel project → connect `bloomorbits/flyboyvideography` → root dir `/frontend` → set `REACT_APP_BACKEND_URL=https://flyboyvideography-production.up.railway.app` in Vercel env → deploy → capture subdomain → add subdomain to Railway's `CORS_ORIGINS` + `ALLOWED_ORIGIN_URLS` + `PORTAL_URL` → redeploy Railway.
+2. Read `/app/docs/CREDENTIAL_ROTATION.md` § "HARD GATE STATUS" (both P0 items closed) AND § "Railway Variables change-control (lessons from 2026-02 cutover session 10)" (understand the CORS mystery + rules going forward BEFORE touching Railway Variables again).
+3. Confirm with user that they want to proceed to **Step 10 (real end-to-end test on Vercel portal + Railway)** — user's approach for the whole cutover has been "one step at a time, confirm what happened before moving on."
+4. Step 10 mechanics:
+   - Curl `POST /api/booking/checkout` against Railway with a REAL email address the user can access (Gmail plus-address recommended — `@example.com` bounces via Resend).
+   - Test date at least 60 days out, package `graduation` (single-tier, cheapest) or `wedding`/`Basic`. Confirm no seed-data collision by checking `bookings` table for the chosen date.
+   - Have user complete Stripe checkout with `4242 4242 4242 4242`.
+   - Verify DB state matches: `payment_transactions.status=completed & payment_status=paid`; `bookings.status=confirmed`; new `clients` row; `date_slot_locks` cleared.
+   - Confirm confirmation email arrives (check Resend Dashboard Logs if not in inbox within 2 min).
+   - Verify the magic link in the email points at `https://flyboyvideography-portal.vercel.app/auth?welcome=1`, NOT preview pod. **This is the specific PORTAL_URL cutover verification** that Step 9.6.c set up but couldn't validate empirically without a real booking.
+   - Click magic link, confirm session establishes on the Vercel portal.
 5. **Do NOT** touch the `NEXT_PUBLIC_API_BASE` on the Next.js Vercel project yet — that's Step 12.
-6. **Do NOT** purge seed data yet — that's Step 11, after Step 10's end-to-end verification confirms the new stack works.
-7. Test credentials for post-Vercel-deploy portal login are unchanged from session 9 — see `/app/memory/test_credentials.md`.
+6. **Do NOT** purge seed data yet — that's Step 11, AFTER Step 10 confirms the new stack works. Purging before verification would remove the ability to reproduce any issues Step 10 surfaces.
+7. Test credentials for portal admin login remain unchanged — see `/app/memory/test_credentials.md`. Portal is at `https://flyboyvideography-portal.vercel.app` (NOT preview pod URL) as of session 10.
+8. If Step 10 surfaces a bug in the payment/email/magic-link chain, feature freeze is still in effect — fix the bug, don't detour into P1 backlog work.
