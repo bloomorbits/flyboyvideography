@@ -76,8 +76,18 @@ NEXT_PUBLIC_API_BASE = https://<your-railway-app>.up.railway.app
 ```
 **Then redeploy** — `NEXT_PUBLIC_*` is baked at build time.
 
-## After Railway is up: verify the XFF trust boundary
-Per user directive (session 9): do NOT trust `X-Real-IP` on Railway blind. Repeat the empirical probe used against Emergent before flipping `_client_ip()` to prefer it:
+## After Railway is up: verify the XFF trust boundary — ✅ DONE (2026-02 cutover)
+
+This section is retained as a HISTORICAL record. The verification has already been executed against `flyboyvideography-production.up.railway.app` and the runbook items closed out. **Do NOT re-add the probe route** unless you're moving off Railway to a new deployment target — in which case, re-run this same procedure against the new target.
+
+**What was done (commit trail):**
+- `a4f0a68` — added temporary `/api/_probe/ip` route to `server.py`.
+- Probe run against Railway with spoofed `X-Real-IP` and `X-Forwarded-For` inputs. 4 scenarios executed (A/B/C/D). Real pod public IP: `34.16.56.64`. Every spoofed prefix was dropped by Railway's ingress. Full result table lives in `CREDENTIAL_ROTATION.md § PL-INFRA-1 → "Verified resolved on Railway (2026-02 cutover)"`.
+- `f0d53f9` — probe route removed, `_client_ip()` in `backend/booking.py:150-195` updated to prefer `X-Real-IP` (leftmost XFF fallback, then `request.client.host`). Confirmed 404 on `/api/_probe/ip` post-redeploy.
+
+**Steady state:** `GET https://flyboyvideography-production.up.railway.app/api/_probe/ip` → `404 Not Found`. This is INTENTIONAL. PL-INFRA-1 is CLOSED.
+
+**If the deployment ever moves off Railway** (new target = Fly, Render, custom k8s, etc.):
 
 1. Temporarily add to `server.py`:
    ```python
@@ -90,11 +100,10 @@ Per user directive (session 9): do NOT trust `X-Real-IP` on Railway blind. Repea
            "cf_connecting_ip": request.headers.get("cf-connecting-ip"),
        }
    ```
-2. `curl -H "X-Forwarded-For: 1.2.3.4" -H "X-Real-IP: 1.2.3.4" https://<railway>/api/_probe/ip`
-3. Confirm `x_real_ip` in the response is NOT `1.2.3.4` (Railway stripped the spoof) and matches your actual public IP.
-4. If confirmed: update `_client_ip()` in `booking.py` to prefer `x-real-ip` before XFF fallback.
-5. Remove the probe endpoint.
-6. Only then mark PL-INFRA-1 as verified-resolved in `CREDENTIAL_ROTATION.md`.
+2. `curl -H "X-Forwarded-For: 1.2.3.4" -H "X-Real-IP: 1.2.3.4" https://<new-target>/api/_probe/ip`
+3. Confirm `x_real_ip` in the response is NOT `1.2.3.4` (edge stripped the spoof) and matches your actual public IP.
+4. If confirmed: no code change needed (the current `_client_ip()` already prefers `X-Real-IP`). If NOT confirmed: `_client_ip()` must be reworked — do NOT flip live until this is resolved.
+5. Remove the probe endpoint in the same commit that captures the empirical table into `CREDENTIAL_ROTATION.md § PL-INFRA-1`.
 
 ## Pre-live-traffic checklist (Supabase side)
 Per your decision to keep the existing Supabase project (preserves the migration 006–009 introspection trail):
