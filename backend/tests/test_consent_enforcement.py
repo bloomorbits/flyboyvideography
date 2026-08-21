@@ -60,24 +60,28 @@ def _mock_sb_for_happy_path():
 
     Returns a MagicMock chain matching sb.table(...).insert/select/eq(...).execute()
     minimally enough for the checkout handler to reach stripe.checkout.Session.create.
+    Records the payload passed to booking_intents.insert() so tests can assert
+    consent columns land on the intent row (Migration 010B).
     """
     sb = MagicMock()
-    # _clean_expired_locks: deletes; return value not used
-    # _confirmed_booking_exists / _active_lock_exists: return empty list → available
-    empty_execute = MagicMock()
-    empty_execute.data = []
-    empty_execute.count = 0
+    # Container the test can read AFTER the request. Populated on insert calls.
+    sb._captured_intent_insert = None
 
-    # Chainable: sb.table("x").select().eq().limit().execute() -> empty
-    # Also: sb.table("x").insert({...}).execute().data -> [{id: ...}]
-    def _mk_chain(is_insert=False):
+    def _mk_chain(table_name):
         chain = MagicMock()
         exec_result = MagicMock()
-        exec_result.data = [{"id": "intent_stub_id"}] if is_insert else []
+        exec_result.data = [{"id": "intent_stub_id"}]
         exec_result.count = 0
         chain.execute.return_value = exec_result
+
+        def _capture_insert(payload):
+            # Only the booking_intents insert has the columns we care about here.
+            if table_name == "booking_intents":
+                sb._captured_intent_insert = payload
+            return chain
+        chain.insert.side_effect = _capture_insert
+
         chain.select.return_value = chain
-        chain.insert.return_value = chain
         chain.update.return_value = chain
         chain.delete.return_value = chain
         chain.eq.return_value = chain
@@ -91,7 +95,7 @@ def _mock_sb_for_happy_path():
         chain.ilike.return_value = chain
         return chain
 
-    sb.table.side_effect = lambda name: _mk_chain(is_insert=True)
+    sb.table.side_effect = _mk_chain
     return sb
 
 
@@ -194,7 +198,8 @@ def test_accepts_valid_consent_and_passes_metadata_to_stripe():
         "safeguarding_consent_accepted": True,
         "model_release_opted_in": False,  # explicitly opted out
     }
-    with patch("booking._sb", return_value=_mock_sb_for_happy_path()), \
+    sb_mock = _mock_sb_for_happy_path()
+    with patch("booking._sb", return_value=sb_mock), \
          patch("booking._clean_expired_locks"), \
          patch("booking._confirmed_booking_exists", return_value=False), \
          patch("booking._active_lock_exists", return_value=False), \
@@ -206,7 +211,24 @@ def test_accepts_valid_consent_and_passes_metadata_to_stripe():
     assert r.status_code == 200, f"happy path failed: {r.status_code}: {r.text}"
     assert stripe_create.call_count == 1, "Stripe session should have been created once"
 
-    # Verify the metadata dict we passed to Stripe contains ALL consent fields.
+    # ---- Migration 010B: consent must land on booking_intents row directly ----
+    intent_payload = sb_mock._captured_intent_insert
+    assert intent_payload is not None, "booking_intents.insert() was never called"
+    assert intent_payload.get("tc_accepted_at"), (
+        "SEC-CONSENT-010B REGRESSION: tc_accepted_at missing from booking_intents row — "
+        "Stripe-metadata-only fallback would silently lose audit trail on Stripe API failure"
+    )
+    assert intent_payload.get("tc_accepted_ip"), "tc_accepted_ip missing from intent"
+    assert intent_payload.get("model_release_opted_in") is False, (
+        f"model_release_opted_in should be False (explicit opt-out), got {intent_payload.get('model_release_opted_in')!r}"
+    )
+    assert intent_payload.get("minors_involved") is True
+    assert intent_payload.get("safeguarding_guardian_name") == "Jane Doe"
+    assert intent_payload.get("safeguarding_consent_accepted_at"), (
+        "safeguarding_consent_accepted_at missing from intent when minors=true"
+    )
+
+    # ---- Migration 010: same info ALSO in Stripe metadata (defense-in-depth) ----
     call_kwargs = stripe_create.call_args.kwargs
     metadata = call_kwargs.get("metadata", {})
     assert metadata.get("consent_tc_at"), "consent_tc_at timestamp missing from Stripe metadata"
@@ -229,10 +251,11 @@ def test_accepts_valid_consent_and_passes_metadata_to_stripe():
 
 def test_accepts_valid_consent_no_minors_omits_safeguarding_metadata():
     """When minors_involved=false, guardian/safeguarding metadata should be
-    ABSENT from Stripe metadata, not present-with-empty-string. Keeps the
-    audit trail clean."""
+    ABSENT from Stripe metadata AND NULL on the intent row's guardian
+    columns — not present-with-empty-string. Keeps the audit trail clean."""
     payload = {**VALID_PAYLOAD_MINIMAL, "minors_involved": False}
-    with patch("booking._sb", return_value=_mock_sb_for_happy_path()), \
+    sb_mock = _mock_sb_for_happy_path()
+    with patch("booking._sb", return_value=sb_mock), \
          patch("booking._clean_expired_locks"), \
          patch("booking._confirmed_booking_exists", return_value=False), \
          patch("booking._active_lock_exists", return_value=False), \
@@ -242,6 +265,18 @@ def test_accepts_valid_consent_no_minors_omits_safeguarding_metadata():
         r = client.post("/api/booking/checkout", json=payload)
 
     assert r.status_code == 200
+
+    # Intent row: guardian columns MUST be NULL, not empty-string
+    intent_payload = sb_mock._captured_intent_insert
+    assert intent_payload.get("minors_involved") is False
+    assert intent_payload.get("safeguarding_guardian_name") is None, (
+        f"guardian_name should be NULL when no minors, got {intent_payload.get('safeguarding_guardian_name')!r}"
+    )
+    assert intent_payload.get("safeguarding_consent_accepted_at") is None, (
+        f"safeguarding_at should be NULL when no minors, got {intent_payload.get('safeguarding_consent_accepted_at')!r}"
+    )
+
+    # Stripe metadata: same rule, absence not empty-string
     metadata = stripe_create.call_args.kwargs.get("metadata", {})
     assert metadata.get("consent_minors_involved") == "false"
     assert "consent_guardian_name" not in metadata, (

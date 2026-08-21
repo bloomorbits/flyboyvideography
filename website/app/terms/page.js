@@ -7,130 +7,89 @@ export const metadata = {
   robots: { index: true, follow: true },
 };
 
-const LAST_UPDATED = "8 February 2026";
-
-// Solid starter T&Cs for a UK-based event videography studio.
-// Deliberately plain-English and safe defaults; anything project-specific
-// (advance-cancellation window, revision counts, usage rights) is written
-// to match what the pricing packages and portal workflows already do.
+// SOLICITOR REVIEW PENDING — includes 14-day cooling-off clause (§7),
+// which needs specific solicitor sign-off before this page ships to real
+// customers. Keep LAST_UPDATED null until approved.
+const LAST_UPDATED = null;
 
 export default function TermsPage() {
   return (
     <div className="bg-cream">
       <div className="mx-auto max-w-3xl px-6 pb-20 pt-32 md:pt-40">
-        <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/50">
-          Legal
-        </p>
+        <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/50">Legal</p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
-          Terms &amp; Conditions
+          Booking Terms &amp; Conditions
         </h1>
         <p className="mt-3 font-mono text-xs uppercase tracking-widest text-ink/50">
-          Last updated {LAST_UPDATED}
+          {LAST_UPDATED ? `Last updated ${LAST_UPDATED}` : "Not yet published — pending solicitor review"}
         </p>
 
-        <div className="prose prose-neutral mt-10 max-w-none text-ink/85">
-          <h2 className="font-display text-xl font-bold">1. Booking &amp; deposit</h2>
+        <div className="mt-10 space-y-8 text-ink/90 leading-relaxed">
           <p>
-            A booking is confirmed once a signed booking agreement is in place
-            and the 50% deposit has cleared. The deposit secures your date and
-            is non-refundable except where we cancel or where a statutory
-            right of cancellation applies.
+            These terms apply to every booking made through flyboyvideography.com. By checking the box at checkout, you&apos;re confirming you&apos;ve read and agree to them.
           </p>
 
-          <h2 className="mt-8 font-display text-xl font-bold">2. Balance payment</h2>
-          <p>
-            The remaining 50% balance is due 3&ndash;5 days before your event.
-            If the balance has not cleared by 24 hours before the event we
-            reserve the right to withdraw coverage; in that case the deposit
-            is retained to cover time already committed.
-          </p>
+          <section>
+            <h2 className="font-display text-xl font-semibold">1. Deposits &amp; Payment</h2>
+            <p className="mt-3">
+              A 50% deposit is required to secure your date. The remaining balance is due 3–5 days before your event. If payment fails or isn&apos;t completed, your booking isn&apos;t confirmed and your date isn&apos;t held.
+            </p>
+          </section>
 
-          <h2 className="mt-8 font-display text-xl font-bold">3. Coverage on the day</h2>
-          <p>
-            Coverage hours are as stated in your chosen package. Additional
-            time on the day can be added at our published rate, subject to
-            availability, and is invoiced separately. Travel outside the
-            stated service area is quoted in advance.
-          </p>
+          <section>
+            <h2 className="font-display text-xl font-semibold">2. Cancellations &amp; Refunds</h2>
+            <ul className="mt-3 list-disc space-y-2 pl-6">
+              <li>More than 7 days before your event: full refund of your deposit</li>
+              <li>3–7 days before your event: 50% of your deposit refunded</li>
+              <li>Within 48 hours of your event: no refund</li>
+              <li>No-shows forfeit their deposit in full</li>
+            </ul>
+            <p className="mt-3">
+              To cancel, contact us at <a className="underline" href="mailto:hello@flyboyvideography.com">hello@flyboyvideography.com</a> as early as possible.
+            </p>
+          </section>
 
-          <h2 className="mt-8 font-display text-xl font-bold">4. Delivery timelines</h2>
-          <p>
-            Standard delivery windows are stated per package (typically
-            7&ndash;14 days for wedding packages, faster for shorter shoots
-            and reels). If a delay is unavoidable we will notify you in
-            writing with a revised delivery date.
-          </p>
+          <section>
+            <h2 className="font-display text-xl font-semibold">3. Rescheduling</h2>
+            <p className="mt-3">
+              If you need to move your date, contact us as soon as you can. We&apos;ll do our best to accommodate a new date subject to availability — rescheduling isn&apos;t guaranteed and may be treated as a cancellation and new booking if requested with less than 48 hours&apos; notice.
+            </p>
+          </section>
 
-          <h2 className="mt-8 font-display text-xl font-bold">5. Revisions</h2>
-          <p>
-            Each package includes a set number of revision rounds per
-            deliverable. Additional revisions beyond the included allowance
-            are flagged in the client portal and may be quoted separately;
-            they are never applied silently.
-          </p>
+          <section>
+            <h2 className="font-display text-xl font-semibold">4. Content Usage Rights</h2>
+            <p className="mt-3">
+              What we can and can&apos;t do with the footage and photos from your session is covered separately in our <Link className="underline" href="/model-release">Model &amp; Talent Release</Link> — please read that alongside these terms.
+            </p>
+          </section>
 
-          <h2 className="mt-8 font-display text-xl font-bold">6. Cancellation</h2>
-          <ul className="list-disc space-y-1 pl-6">
-            <li>
-              <strong>By you, more than 30 days before the event:</strong> the
-              deposit is retained; no further payment is due.
-            </li>
-            <li>
-              <strong>By you, within 30 days of the event:</strong> the deposit
-              is retained and 50% of the remaining balance is payable to cover
-              committed time and turned-away enquiries.
-            </li>
-            <li>
-              <strong>By us:</strong> any payments received are refunded in
-              full, and where possible we will help arrange an alternative
-              videographer.
-            </li>
-            <li>
-              <strong>Rescheduling:</strong> one free reschedule is available
-              if requested more than 30 days before the event and subject to
-              availability of the new date.
-            </li>
-          </ul>
+          <section>
+            <h2 className="font-display text-xl font-semibold">5. Delivery Timeline</h2>
+            <p className="mt-3">
+              Delivery times vary by package and are stated on your service confirmation — typically 7 days for standard packages, up to 7–14 days for full-day coverage. Delays will always be communicated directly; they&apos;re not common, but travel, extreme weather, or exceptional circumstances can occasionally affect timing.
+            </p>
+          </section>
 
-          <h2 className="mt-8 font-display text-xl font-bold">7. Usage rights</h2>
-          <p>
-            You receive an unlimited personal-use licence to the delivered
-            films and stills as soon as the final invoice is paid in full. We
-            retain copyright and the right to use the delivered work in our
-            own portfolio and marketing unless you specifically opt out in
-            writing before delivery.
-          </p>
+          <section>
+            <h2 className="font-display text-xl font-semibold">6. Weather &amp; Outdoor Shoots</h2>
+            <p className="mt-3">
+              For sessions involving outdoor locations, weather beyond our control (e.g. severe storms, unsafe conditions) may require adjusting the shoot plan on the day, or in rare cases rescheduling. We&apos;re not liable for weather-related changes to the shoot, but we&apos;ll always work with you to find the best outcome.
+            </p>
+          </section>
 
-          <h2 className="mt-8 font-display text-xl font-bold">8. Master footage</h2>
-          <p>
-            Master (unedited) footage is not delivered as part of any package.
-            We retain masters for the period stated in your booking agreement,
-            after which they are deleted from active storage.
-          </p>
+          <section>
+            <h2 className="font-display text-xl font-semibold">7. Your Right to Cancel (14-Day Cooling-Off)</h2>
+            <p className="mt-3">
+              UK law normally gives you 14 days to cancel an online booking. Because our services are typically booked for a specific date, once you&apos;ve agreed a date and time with us, you&apos;re agreeing that the service will be carried out before the 14-day period ends, and that your right to a full refund under this cooling-off period ends once the shoot has taken place. This doesn&apos;t affect your rights under our own cancellation policy above.
+            </p>
+          </section>
 
-          <h2 className="mt-8 font-display text-xl font-bold">9. Liability</h2>
-          <p>
-            Our liability for any single booking is capped at the total
-            invoice value of that booking. We are not liable for indirect or
-            consequential loss, or for events outside our reasonable control
-            (illness, equipment failure despite backups, weather forcing an
-            event to be cancelled by the venue, etc.). Where equipment failure
-            or illness prevents us from covering an event, our first remedy is
-            to arrange a suitable substitute videographer; if that is not
-            possible, all sums paid are refunded.
-          </p>
-
-          <h2 className="mt-8 font-display text-xl font-bold">10. Governing law</h2>
-          <p>
-            These terms are governed by the laws of England &amp; Wales. Any
-            dispute is subject to the exclusive jurisdiction of the courts of
-            England &amp; Wales.
-          </p>
-
-          <p className="mt-10 text-sm text-ink/60">
-            See also our{" "}
-            <Link href="/privacy" className="underline underline-offset-4">Privacy Policy</Link>.
-          </p>
+          <section>
+            <h2 className="font-display text-xl font-semibold">8. Liability</h2>
+            <p className="mt-3">
+              We carry appropriate insurance for our work. We&apos;re not liable for indirect or consequential losses arising from your booking, except where required by law.
+            </p>
+          </section>
         </div>
       </div>
     </div>

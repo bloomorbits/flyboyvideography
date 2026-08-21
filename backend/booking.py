@@ -689,11 +689,26 @@ def create_checkout(body: CheckoutIn, request: Request):
                 "Guardian safeguarding consent must be accepted when anyone under 18 will appear in the session.",
             )
     # Timestamps + IP captured at the moment the checkbox was submitted.
-    # We store these as ISO strings in Stripe metadata (server-set, echoed
-    # through webhook, tamper-proof from client) and write them to the
-    # bookings row at webhook-finalise time — see _finalise_paid_session.
+    # Persisted TWICE by design (Migration 010 + 010B):
+    #   1. Primary: booking_intents (this row) — written NOW, no external
+    #      dependency, no eventual consistency. This is the audit-trail
+    #      source of truth and is copied to bookings at webhook time.
+    #   2. Defense-in-depth: Stripe session metadata (server-set, echoed
+    #      through webhook, tamper-proof from client, visible in Stripe
+    #      Dashboard as an auditor cross-reference).
+    # If the intent write succeeds and Stripe fails, the intent is rolled
+    # back on line 786; consent for an unpaid booking is not a compliance
+    # record so this is correct.
     consent_now = _now_iso()
     consent_ip = _client_ip(request)  # trusted per PL-INFRA-1 empirical proof
+    consent_cols_for_intent = {
+        "tc_accepted_at": consent_now,
+        "tc_accepted_ip": consent_ip,
+        "model_release_opted_in": body.model_release_opted_in,
+        "minors_involved": body.minors_involved,
+        "safeguarding_guardian_name": guardian_name if body.minors_involved else None,
+        "safeguarding_consent_accepted_at": consent_now if body.minors_involved else None,
+    }
     consent_meta = {
         "consent_tc_at": consent_now,
         "consent_tc_ip": consent_ip,
@@ -717,7 +732,10 @@ def create_checkout(body: CheckoutIn, request: Request):
     price_total = float(tier["price"])
     price_deposit = deposit_gbp(price_total)
 
-    # 1. booking_intent (pending) — session_id filled in after Stripe returns
+    # 1. booking_intent (pending) — session_id filled in after Stripe returns.
+    #    Consent columns land HERE at checkout time (Migration 010B) —
+    #    primary source of truth for the audit trail, independent of any
+    #    later Stripe webhook success.
     intent_row = sb.table("booking_intents").insert({
         "email": str(body.email),
         "full_name": body.full_name,
@@ -730,6 +748,7 @@ def create_checkout(body: CheckoutIn, request: Request):
         "event_date": event_iso,
         "event_notes": body.event_notes,
         "status": "pending",
+        **consent_cols_for_intent,
     }).execute().data[0]
 
     # 2. Stripe Checkout Session (DIY tax mode; user is not VAT-registered)
@@ -877,33 +896,46 @@ def _finalise_paid_session(session_id: str, payment_intent_id: Optional[str]) ->
         return {"skipped": "no booking_intent"}
     intent = intent[0]
 
-    # Consent capture (Migration 010, session 11): consent was collected
-    # server-side at checkout and passed through Stripe metadata (server-set
-    # → tamper-proof from client → echoed back verbatim on webhook events).
-    # Fetch defensively — a stale Stripe API blip should degrade to "consent
-    # unknown" rather than block the booking, because the booking already
-    # gated on consent at CHECKOUT time (see /api/booking/checkout). If
-    # metadata is missing here it's diagnostic, not enforcement.
-    consent_meta: dict = {}
-    try:
-        s = stripe.checkout.Session.retrieve(session_id)
-        consent_meta = dict(s.metadata or {})
-    except Exception as e:
-        log.warning("consent metadata fetch failed for session %s (booking will proceed, columns null): %s", session_id, e)
-
+    # Consent capture (Migrations 010 + 010B, session 11): consent lives in
+    # TWO places for defense-in-depth. Primary source is the booking_intents
+    # row itself (columns written at checkout time — no external dependency).
+    # Fallback is the Stripe session metadata (server-set → tamper-proof →
+    # echoed through webhook). If BOTH somehow miss, columns land NULL —
+    # but the actual enforcement gate ran at checkout, so the booking still
+    # exists validly; this is audit-trail writing, not enforcement.
     def _parse_bool(v, default):
         if v is None:
             return default
         return str(v).lower() == "true"
 
+    # Prefer intent columns (Migration 010B).
     consent_cols = {
-        "tc_accepted_at": consent_meta.get("consent_tc_at"),
-        "tc_accepted_ip": consent_meta.get("consent_tc_ip"),
-        "model_release_opted_in": _parse_bool(consent_meta.get("consent_model_release_opted_in"), True),
-        "minors_involved": _parse_bool(consent_meta.get("consent_minors_involved"), False),
-        "safeguarding_guardian_name": consent_meta.get("consent_guardian_name"),
-        "safeguarding_consent_accepted_at": consent_meta.get("consent_safeguarding_at"),
+        "tc_accepted_at": intent.get("tc_accepted_at"),
+        "tc_accepted_ip": intent.get("tc_accepted_ip"),
+        "model_release_opted_in": intent.get("model_release_opted_in", True),
+        "minors_involved": intent.get("minors_involved", False),
+        "safeguarding_guardian_name": intent.get("safeguarding_guardian_name"),
+        "safeguarding_consent_accepted_at": intent.get("safeguarding_consent_accepted_at"),
     }
+
+    # Defense-in-depth: if intent is somehow missing consent (e.g. an
+    # older intent row from before Migration 010B — shouldn't exist in
+    # practice given we purged at Step 11, but for future-proofing), try
+    # Stripe metadata as a fallback.
+    if consent_cols["tc_accepted_at"] is None:
+        try:
+            s = stripe.checkout.Session.retrieve(session_id)
+            meta = dict(s.metadata or {})
+            if meta.get("consent_tc_at"):
+                log.info("consent fallback: intent row missing tc_accepted_at, using Stripe metadata for session %s", session_id)
+                consent_cols["tc_accepted_at"] = meta.get("consent_tc_at")
+                consent_cols["tc_accepted_ip"] = meta.get("consent_tc_ip")
+                consent_cols["model_release_opted_in"] = _parse_bool(meta.get("consent_model_release_opted_in"), True)
+                consent_cols["minors_involved"] = _parse_bool(meta.get("consent_minors_involved"), False)
+                consent_cols["safeguarding_guardian_name"] = meta.get("consent_guardian_name")
+                consent_cols["safeguarding_consent_accepted_at"] = meta.get("consent_safeguarding_at")
+        except Exception as e:
+            log.warning("consent Stripe-fallback fetch failed for session %s (booking will proceed, consent columns may be null): %s", session_id, e)
 
     # Provision auth user + client row (idempotent). Done BEFORE the atomic
     # insert so that on a crash between insert and email we still have a
