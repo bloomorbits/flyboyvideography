@@ -133,7 +133,7 @@ export default function ServicesPage() {
             <Reveal>
               <h2 className="font-display text-3xl font-bold tracking-tight md:text-4xl">{pkg.title}</h2>
               {pkg.hoursOnly && (
-                <p className="mt-2 font-mono text-xs uppercase tracking-widest text-ink/50">
+                <p className="mt-2 font-mono text-xs uppercase tracking-widest text-ink/70">
                   Coverage &amp; pricing — get in touch to discuss your event
                 </p>
               )}
@@ -215,7 +215,7 @@ export default function ServicesPage() {
         <div className="relative mx-auto max-w-6xl px-6 py-16 md:py-20">
           <Reveal>
             <h2 className="font-display text-3xl font-bold tracking-tight md:text-4xl">{extras.title}</h2>
-            <p className="mt-2 font-mono text-xs uppercase tracking-widest text-ink/50">{extras.subtitle}</p>
+            <p className="mt-2 font-mono text-xs uppercase tracking-widest text-ink/70">{extras.subtitle}</p>
           </Reveal>
           <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3">
             {extras.items.map((item, i) => (

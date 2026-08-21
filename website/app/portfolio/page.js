@@ -98,7 +98,7 @@ export default function PortfolioPage() {
       <section className="relative overflow-hidden border-t border-dune bg-sand">
         <div className="relative mx-auto max-w-6xl px-6 py-16 md:py-20">
           <Reveal>
-            <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/50">
+            <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/70">
               What you're looking at
             </p>
             <h2 className="mt-3 max-w-2xl font-display text-3xl font-bold tracking-tight md:text-4xl">

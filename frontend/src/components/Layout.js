@@ -22,7 +22,7 @@ export default function Layout() {
           <p className="font-display text-xl font-bold tracking-tight text-ink">
             FLYBOY<span className="text-accent">/</span>VIDEO
           </p>
-          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.3em] text-ink/50">Client Portal</p>
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.3em] text-ink/70">Client Portal</p>
         </div>
         <nav className="flex-1 space-y-1 px-3 py-6">
           {links.map(({ to, label, icon: Icon, id }) => (
@@ -74,7 +74,7 @@ export default function Layout() {
           <p className="truncate text-sm font-medium text-ink" data-testid="user-name">
             {profile?.full_name || session?.user?.email}
           </p>
-          <p className="font-mono text-[10px] uppercase tracking-widest text-ink/50">{profile?.role || "client"}</p>
+          <p className="font-mono text-[10px] uppercase tracking-widest text-ink/70">{profile?.role || "client"}</p>
           <button
             onClick={signOut}
             data-testid="logout-btn"

@@ -13,7 +13,7 @@ export default function NotFound() {
   return (
     <div className="flex min-h-[70vh] items-center justify-center bg-cream px-6 pt-32">
       <div className="max-w-lg text-center" data-testid="not-found">
-        <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/50">
+        <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/70">
           Error 404
         </p>
         <h1 className="mt-3 font-display text-5xl font-bold tracking-tight md:text-6xl">

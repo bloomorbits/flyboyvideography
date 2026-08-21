@@ -63,7 +63,7 @@ function DatePicker({ blocked, value, onChange }) {
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 text-center font-mono text-[10px] uppercase tracking-widest text-ink/50">
+      <div className="grid grid-cols-7 gap-1 text-center font-mono text-[10px] uppercase tracking-widest text-ink/70">
         {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (<div key={d}>{d}</div>))}
       </div>
 
@@ -99,7 +99,7 @@ function DatePicker({ blocked, value, onChange }) {
         })}
       </div>
 
-      <p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-ink/50">
+      <p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-ink/70">
         Struck-through days are unavailable. Bookings open 18 months ahead.
       </p>
     </div>
@@ -108,7 +108,7 @@ function DatePicker({ blocked, value, onChange }) {
 
 export default function BookPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-cream pt-24 text-center text-ink/50">Loading…</main>}>
+    <Suspense fallback={<main className="min-h-screen bg-cream pt-24 text-center text-ink/70">Loading…</main>}>
       <BookPageInner />
     </Suspense>
   );
@@ -258,7 +258,7 @@ function BookPageInner() {
                     }`}
                   >
                     <p className="font-display text-lg font-semibold">{p.title}</p>
-                    <p className="mt-1 font-mono text-xs uppercase tracking-widest text-ink/50">
+                    <p className="mt-1 font-mono text-xs uppercase tracking-widest text-ink/70">
                       {p.tiers.length > 1
                         ? `from ${gbp(Math.min(...p.tiers.map((t) => t.price)))}`
                         : gbp(p.tiers[0].price)}
@@ -284,7 +284,7 @@ function BookPageInner() {
                     >
                       <p className="font-display text-base font-semibold">{t.name}</p>
                       <p className="mt-1 font-mono text-xl font-bold">{gbp(t.price)}</p>
-                      <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-ink/50">
+                      <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-ink/70">
                         {t.coverage}
                       </p>
                     </button>

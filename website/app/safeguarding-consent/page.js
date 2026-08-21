@@ -14,11 +14,11 @@ export default function SafeguardingConsentPage() {
   return (
     <div className="bg-cream">
       <div className="mx-auto max-w-3xl px-6 pb-20 pt-32 md:pt-40">
-        <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/50">Legal</p>
+        <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/70">Legal</p>
         <h1 className="mt-3 font-display text-4xl font-bold tracking-tight md:text-5xl">
           Children &amp; Safeguarding Consent
         </h1>
-        <p className="mt-3 font-mono text-xs uppercase tracking-widest text-ink/50">
+        <p className="mt-3 font-mono text-xs uppercase tracking-widest text-ink/70">
           {LAST_UPDATED ? `Last updated ${LAST_UPDATED}` : "Not yet published — pending solicitor review"}
         </p>
 

@@ -7,7 +7,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
 
 export default function ContactPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-cream pt-24 text-center text-ink/50">Loading…</main>}>
+    <Suspense fallback={<main className="min-h-screen bg-cream pt-24 text-center text-ink/70">Loading…</main>}>
       <ContactInner />
     </Suspense>
   );

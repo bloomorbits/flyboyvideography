@@ -152,7 +152,7 @@ function SuccessInner() {
 export default function SuccessPage() {
   return (
     <main className="min-h-screen bg-cream text-ink">
-      <Suspense fallback={<div className="pt-24 text-center text-ink/50">Loading…</div>}>
+      <Suspense fallback={<div className="pt-24 text-center text-ink/70">Loading…</div>}>
         <SuccessInner />
       </Suspense>
     </main>

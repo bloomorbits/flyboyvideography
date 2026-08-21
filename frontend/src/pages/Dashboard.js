@@ -65,7 +65,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         {cards.map((c, i) => (
           <Card key={c.label} className="card-hover rise p-6" style={{ animationDelay: `${i * 60}ms` }} data-testid={c.id}>
-            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-ink/50">{c.label}</p>
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-ink/70">{c.label}</p>
             <p className="mt-3 font-display text-5xl font-extrabold tracking-tighter text-ink">{c.value ?? "—"}</p>
           </Card>
         ))}
@@ -87,7 +87,7 @@ export default function Dashboard() {
               >
                 <div>
                   <p className="font-semibold">{d.title}</p>
-                  <p className="mt-0.5 font-mono text-xs text-ink/50">v{d.version} · updated {fmtDate(d.updated_at?.slice(0, 10))}</p>
+                  <p className="mt-0.5 font-mono text-xs text-ink/70">v{d.version} · updated {fmtDate(d.updated_at?.slice(0, 10))}</p>
                 </div>
                 <StatusPill status={d.status} />
               </Link>

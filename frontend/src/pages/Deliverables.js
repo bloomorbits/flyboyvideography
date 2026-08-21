@@ -32,7 +32,7 @@ export default function Deliverables() {
                   <SourceBadge type={d.booking_id ? "booking" : "subscription"} />
                 </div>
                 <p className="mt-4 font-display text-lg font-bold tracking-tight">{d.title}</p>
-                <p className="mt-1 font-mono text-xs text-ink/50">Version {d.version} · {fmtDate(d.updated_at?.slice(0, 10))}</p>
+                <p className="mt-1 font-mono text-xs text-ink/70">Version {d.version} · {fmtDate(d.updated_at?.slice(0, 10))}</p>
                 <div className="mt-5 border-t border-dune pt-4">
                   <StatusPill status={d.status} />
                 </div>

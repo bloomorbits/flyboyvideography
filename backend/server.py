@@ -9,6 +9,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
 from supabase import create_client
@@ -77,6 +78,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Response compression — minimum_size=500 makes it a no-op for our tiny
+# health/availability payloads (37-115 bytes; gzip framing overhead would
+# exceed the raw body) but kicks in on larger admin-list responses where
+# the wire savings are meaningful. Handles gzip; Accept-Encoding negotiation
+# is automatic. Brotli not shipped with FastAPI/Starlette; if we ever want
+# it, we'd add `brotli-asgi` as a dep.
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # Client-facing booking flow (Phase 1) — see booking.py
 from booking import router as booking_router  # noqa: E402
