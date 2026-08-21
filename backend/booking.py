@@ -118,6 +118,20 @@ class CheckoutIn(BaseModel):
     phone: Optional[str] = Field(default=None, max_length=40)
     event_notes: Optional[str] = Field(default=None, max_length=2000)
     origin_url: str = Field(..., min_length=1)  # e.g. "https://flyboyvideography.com"
+    # ---- Consent capture (Migration 010, session 11) ----
+    # T&Cs are the hard legal gate — MUST be true. Enforced below in the
+    # checkout handler, not just as `= True` here, because Pydantic-side
+    # defaults are silently accepted while a server-side raise gives a
+    # clear 400 message the frontend can render.
+    tc_accepted: bool = False
+    model_release_opted_in: bool = True  # opt-out model, pre-checked in UI
+    minors_involved: bool = False
+    # Conditional: only required when minors_involved=true. Both nullable at
+    # Pydantic level so an over-eager frontend can't accidentally send empty
+    # strings that pass server validation; the handler enforces truthy when
+    # minors_involved is set.
+    safeguarding_guardian_name: Optional[str] = Field(default=None, max_length=200)
+    safeguarding_consent_accepted: bool = False
 
 
 class CheckoutOut(BaseModel):
@@ -656,6 +670,40 @@ def create_checkout(body: CheckoutIn, request: Request):
         log.warning("open-redirect attempt: origin_url=%r not in allowlist", body.origin_url)
         raise HTTPException(422, "Unsupported origin_url.")
 
+    # ---- Consent enforcement (Migration 010, session 11) ----
+    # Server-side gate. Frontend also disables the pay button on the same
+    # conditions, but the frontend is UX — this is the actual legal boundary.
+    # A booking cannot exist without a T&Cs acceptance timestamp.
+    if not body.tc_accepted:
+        raise HTTPException(400, "You must accept the Terms & Conditions to book.")
+    guardian_name = (body.safeguarding_guardian_name or "").strip()
+    if body.minors_involved:
+        if not guardian_name:
+            raise HTTPException(
+                400,
+                "A guardian's full name is required when anyone under 18 will appear in the session.",
+            )
+        if not body.safeguarding_consent_accepted:
+            raise HTTPException(
+                400,
+                "Guardian safeguarding consent must be accepted when anyone under 18 will appear in the session.",
+            )
+    # Timestamps + IP captured at the moment the checkbox was submitted.
+    # We store these as ISO strings in Stripe metadata (server-set, echoed
+    # through webhook, tamper-proof from client) and write them to the
+    # bookings row at webhook-finalise time — see _finalise_paid_session.
+    consent_now = _now_iso()
+    consent_ip = _client_ip(request)  # trusted per PL-INFRA-1 empirical proof
+    consent_meta = {
+        "consent_tc_at": consent_now,
+        "consent_tc_ip": consent_ip,
+        "consent_model_release_opted_in": "true" if body.model_release_opted_in else "false",
+        "consent_minors_involved": "true" if body.minors_involved else "false",
+    }
+    if body.minors_involved:
+        consent_meta["consent_guardian_name"] = guardian_name[:400]  # Stripe metadata value cap is 500
+        consent_meta["consent_safeguarding_at"] = consent_now
+
     event_iso = body.event_date.isoformat()
 
     # Cheap availability re-check (races caught by the DB unique index at
@@ -714,6 +762,7 @@ def create_checkout(body: CheckoutIn, request: Request):
                 "package_id": pkg["id"],
                 "tier_name": body.tier_name or "",
                 "event_date": event_iso,
+                **consent_meta,
             },
             expires_at=int((datetime.now(timezone.utc) + timedelta(minutes=30)).timestamp()),
         )
@@ -828,6 +877,34 @@ def _finalise_paid_session(session_id: str, payment_intent_id: Optional[str]) ->
         return {"skipped": "no booking_intent"}
     intent = intent[0]
 
+    # Consent capture (Migration 010, session 11): consent was collected
+    # server-side at checkout and passed through Stripe metadata (server-set
+    # → tamper-proof from client → echoed back verbatim on webhook events).
+    # Fetch defensively — a stale Stripe API blip should degrade to "consent
+    # unknown" rather than block the booking, because the booking already
+    # gated on consent at CHECKOUT time (see /api/booking/checkout). If
+    # metadata is missing here it's diagnostic, not enforcement.
+    consent_meta: dict = {}
+    try:
+        s = stripe.checkout.Session.retrieve(session_id)
+        consent_meta = dict(s.metadata or {})
+    except Exception as e:
+        log.warning("consent metadata fetch failed for session %s (booking will proceed, columns null): %s", session_id, e)
+
+    def _parse_bool(v, default):
+        if v is None:
+            return default
+        return str(v).lower() == "true"
+
+    consent_cols = {
+        "tc_accepted_at": consent_meta.get("consent_tc_at"),
+        "tc_accepted_ip": consent_meta.get("consent_tc_ip"),
+        "model_release_opted_in": _parse_bool(consent_meta.get("consent_model_release_opted_in"), True),
+        "minors_involved": _parse_bool(consent_meta.get("consent_minors_involved"), False),
+        "safeguarding_guardian_name": consent_meta.get("consent_guardian_name"),
+        "safeguarding_consent_accepted_at": consent_meta.get("consent_safeguarding_at"),
+    }
+
     # Provision auth user + client row (idempotent). Done BEFORE the atomic
     # insert so that on a crash between insert and email we still have a
     # coherent auth account for the client.
@@ -854,6 +931,7 @@ def _finalise_paid_session(session_id: str, payment_intent_id: Optional[str]) ->
             "budget": float(intent["price_total"]),
             "notes": intent.get("event_notes"),
             "is_seed_data": False,
+            **consent_cols,
         }).execute().data[0]
     except Exception as e:
         msg = str(e).lower()
