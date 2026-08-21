@@ -13,3 +13,7 @@ website/out/
 # Node modules (should already be ignored but re-declare for safety)
 website/node_modules/
 frontend/node_modules/
+
+# Video source masters — kept locally for re-encoding, not shipped to Vercel
+website/assets/*.mp4
+website/assets/*.mov
