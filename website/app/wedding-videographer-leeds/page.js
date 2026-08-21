@@ -28,7 +28,7 @@ const CONTENT = {
     { title: "Delivery within 7–14 days", detail: "depending on package" },
   ],
   inlineLink: {
-    href: "/services#weddings",
+    href: "/services#wedding",
     label: "See full Wedding Videography packages & pricing",
   },
   serviceArea:

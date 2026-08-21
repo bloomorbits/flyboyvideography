@@ -19,12 +19,12 @@ const LEGAL = [
 // Handles are placeholders — update once real accounts are confirmed.
 const SOCIAL = [
   {
-    href: "https://www.instagram.com/flyboyvideography",
+    href: "https://www.instagram.com/flyboyvideography_uk/",
     label: "Instagram",
     testid: "footer-social-instagram",
   },
   {
-    href: "https://www.tiktok.com/@flyboyvideography",
+    href: "https://www.tiktok.com/@flyboy_videography",
     label: "TikTok",
     testid: "footer-social-tiktok",
   },
