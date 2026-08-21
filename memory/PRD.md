@@ -439,10 +439,10 @@ via code review.
 | 5 | Real end-to-end smoke test (real Stripe test-mode payment against Railway) | ✅ full chain verified: booking row, tx=paid, clients row, Resend email delivered, status endpoint, `date_slot_locks` cleaned up |
 | 6-8 | XFF/CORS empirical verification + `_client_ip()` hardening | ✅ PL-INFRA-1 + PL-INFRA-2 CLOSED |
 | 9 | Vercel CRA client portal deployment + CORS allowlist reconciliation | ✅ portal live at `flyboyvideography-portal.vercel.app`; Railway `CORS_ORIGINS` + `ALLOWED_ORIGIN_URLS` + `PORTAL_URL` updated; localhost drift cleaned up; second security audit PASSED; full CORS-drift root-cause documented in `CREDENTIAL_ROTATION.md § Railway Variables change-control` |
-| 10 | Full end-to-end on Vercel portal + Railway | ⏳ **NEXT SESSION — meaty step** |
-| 11 | Seed-data purge via Admin Danger Zone + manual SQL | ⏳ |
-| 12 | Update `NEXT_PUBLIC_API_BASE` on Next.js Vercel project, redeploy | ⏳ |
-| 13 | Live end-to-end verify on `flyboyvideography.com` | ⏳ |
+| 10 | Full end-to-end on Vercel portal + Railway | ✅ session 10 — full chain verified (real payment → Railway webhook → Supabase → Resend email → magic-link → Vercel portal session). Uncovered latent Supabase URL Configuration bug (Site URL still `http://localhost:3000`, allowlist missing all portal URLs); fixed in Dashboard, retest passed. Root cause + rules documented in `CREDENTIAL_ROTATION.md § Supabase Auth URL Configuration governance` |
+| 11 | Seed-data purge via Admin Danger Zone + manual SQL | ✅ session 10 — `is_seed_data=true` rows purged via portal admin button, both smoke-test bookings (Step 5 + Step 10) deleted with FK-safe SQL, orphaned clients + `auth.users` deleted, diagnostic tables (checkout_attempts / contact_attempts / rate_limit_events) zeroed. Also surfaced: Supabase SQL editor's multi-statement batch behaviour is NOT reliably transactional — a mid-batch error can leave some statements committed and others silently skipped. Rule: always follow multi-statement DELETE batches with an explicit COUNT verification on every table touched. |
+| 12 | Update `NEXT_PUBLIC_API_BASE` on Next.js Vercel project, redeploy | ✅ session 10 — Vercel `flyboyvideography` project (Next.js public site) env var flipped to Railway URL across all three environments, redeployed with build cache disabled. Empirical verification on `flyboyvideography.com/book`: DevTools Network filter `railway.app` shows `/api/booking/availability` returning 200; filter `preview.emergentagent.com` shows 0/25 requests. Preflight probes from all four production origins (`flyboyvideography.com`, `www.flyboyvideography.com`, `flyboyvideography.vercel.app`, control evil origin) match expected. |
+| 13 | Live end-to-end verify on `flyboyvideography.com` | ⏳ **NEXT SESSION — real customer path, real payment** |
 | 14 | Retire Emergent-preview Stripe webhook, mark PL-INFRA-1/2 verified-resolved | ⏳ |
 
 ### Key code changes (session 10)
@@ -482,20 +482,23 @@ Order preserved from session 9, with `SEC-001`, `PL-INFRA-1`, `PL-INFRA-2` all s
 
 ### Next-session pickup for a fresh agent
 
-**⚠ Step 10 is a substantial step, not a quick one.** It's the real end-to-end validation of the entire new stack (Vercel portal + Railway backend + Supabase + Stripe test-mode + Resend). Expect: real Stripe test-mode checkout via curl against Railway, complete payment with `4242 4242 4242 4242`, wait for confirmation email to arrive via Resend, click the magic link, land on the Vercel portal (NOT the preview pod — `PORTAL_URL` was cut over in Step 9.6), confirm session establishes on the portal, verify all four DB effects match Step 5's success criteria. Budget the session accordingly — this is not a "small check-in" step.
+**⚠ Step 13 is a real end-to-end validation on the customer path — same weight as Step 10, but from the front door.** Real Stripe test-mode payment, real Resend email, real magic-link click-through. The difference from Step 10 is that Step 13 STARTS from `https://flyboyvideography.com/book` (real customer entry point), exercising the browser + JS bundle + Stripe.js redirect + Vercel-hosted success page — layers that Step 10's curl-driven flow couldn't reach. Budget the session accordingly. If it produces test data, follow the Step 11 pattern to purge (portal admin button + FK-safe SQL + auth.users deletion).
 
-1. Read `/app/docs/RAILWAY_VERCEL_CUTOVER.md` (deployed environments table at top).
-2. Read `/app/docs/CREDENTIAL_ROTATION.md` § "HARD GATE STATUS" (both P0 items closed) AND § "Railway Variables change-control (lessons from 2026-02 cutover session 10)" (understand the CORS mystery + rules going forward BEFORE touching Railway Variables again).
-3. Confirm with user that they want to proceed to **Step 10 (real end-to-end test on Vercel portal + Railway)** — user's approach for the whole cutover has been "one step at a time, confirm what happened before moving on."
-4. Step 10 mechanics:
-   - Curl `POST /api/booking/checkout` against Railway with a REAL email address the user can access (Gmail plus-address recommended — `@example.com` bounces via Resend).
-   - Test date at least 60 days out, package `graduation` (single-tier, cheapest) or `wedding`/`Basic`. Confirm no seed-data collision by checking `bookings` table for the chosen date.
-   - Have user complete Stripe checkout with `4242 4242 4242 4242`.
-   - Verify DB state matches: `payment_transactions.status=completed & payment_status=paid`; `bookings.status=confirmed`; new `clients` row; `date_slot_locks` cleared.
-   - Confirm confirmation email arrives (check Resend Dashboard Logs if not in inbox within 2 min).
-   - Verify the magic link in the email points at `https://flyboyvideography-portal.vercel.app/auth?welcome=1`, NOT preview pod. **This is the specific PORTAL_URL cutover verification** that Step 9.6.c set up but couldn't validate empirically without a real booking.
-   - Click magic link, confirm session establishes on the Vercel portal.
-5. **Do NOT** touch the `NEXT_PUBLIC_API_BASE` on the Next.js Vercel project yet — that's Step 12.
-6. **Do NOT** purge seed data yet — that's Step 11, AFTER Step 10 confirms the new stack works. Purging before verification would remove the ability to reproduce any issues Step 10 surfaces.
-7. Test credentials for portal admin login remain unchanged — see `/app/memory/test_credentials.md`. Portal is at `https://flyboyvideography-portal.vercel.app` (NOT preview pod URL) as of session 10.
-8. If Step 10 surfaces a bug in the payment/email/magic-link chain, feature freeze is still in effect — fix the bug, don't detour into P1 backlog work.
+1. Read `/app/docs/RAILWAY_VERCEL_CUTOVER.md` (deployed environments table + domain gotcha + emergent-only deps sections at top).
+2. Read `/app/docs/CREDENTIAL_ROTATION.md` — especially:
+   - § "HARD GATE STATUS" (both PL-INFRA items CLOSED, live-mode Stripe unblocked)
+   - § "Railway Variables change-control" (2026-02 session 10 CORS drift lesson)
+   - § "Supabase Auth URL Configuration governance" (2026-02 session 10 latent bug — MUST verify empirically after ANY future URL Configuration change)
+3. Confirm with user that they want to proceed to **Step 13 (real customer-path end-to-end test)** — user's approach for the whole cutover has been "one step at a time, confirm what happened before moving on."
+4. Step 13 mechanics:
+   - Open `https://flyboyvideography.com/book` in an incognito browser window.
+   - Pick a package + a test date ≥ 60 days out with no seed collision (verify first: `SELECT id FROM bookings WHERE event_date = '<date>';` returns 0).
+   - Use a Gmail plus-address the user can access. Do NOT use the literal string `YOUR.EMAIL` — that placeholder-copied-verbatim issue in Step 5 (session 10) is documented in the CREDENTIAL_ROTATION.md governance sections; explicit placeholder brackets or code-fence placeholders help.
+   - Complete Stripe checkout with `4242 4242 4242 4242`.
+   - Verify the same four DB effects as Step 10 (`payment_transactions.payment_status=paid`, `bookings.status=confirmed`, fresh `clients` row, empty `date_slot_locks`).
+   - Verify email arrives, redirect_to in magic link points at `https://flyboyvideography-portal.vercel.app/auth?welcome=1` (Supabase URL Configuration should already honour this from session 10's fix).
+   - Click magic link → land on Vercel portal → session established → booking visible.
+5. **If Step 13 passes:** proceed to **Step 14 — retire Emergent-preview Stripe webhook + optionally remove `db-bridge-5.preview.emergentagent.com` from Railway's `CORS_ORIGINS` + `ALLOWED_ORIGIN_URLS`**. This is the "cutover fully complete" step. Also decide the follow-up on the pod's `/app/website/.env.local` (still points at preview; three options documented in Step 12).
+6. Test credentials for portal admin login remain unchanged — see `/app/memory/test_credentials.md`. Portal is at `https://flyboyvideography-portal.vercel.app`.
+7. If Step 13 surfaces a bug in the customer-path chain, feature freeze remains in effect — fix the bug, do NOT detour into P1 backlog work (Enquiry Inbox, Retainers, Welcome Tour). Enquiry Inbox is the first post-cutover item per session 10's confirmed plan.
+8. Session 10 ended at a genuinely strong checkpoint: public site fully cut over to Railway, empirically verified with zero residual preview traffic. Everything WORKS on the new stack today; Step 13 is validation of the final untested vector (customer-facing browser flow), not a fix-something-broken step.
