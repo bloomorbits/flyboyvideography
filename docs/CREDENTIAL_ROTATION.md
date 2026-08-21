@@ -363,6 +363,99 @@ the exact class of ambiguity that leads to real problems later.
    understanding which side should be authoritative for the specific
    variable.
 
+## Supabase Auth URL Configuration governance (lessons from 2026-02 cutover session 10, Step 10)
+
+A latent bug from initial Supabase project setup was surfaced during
+Step 10's end-to-end validation and fixed the same night. Documented
+here because it's the exact class of misconfiguration that can bite
+again if URL Configuration is ever changed later without empirical
+verification.
+
+### What the latent bug was
+
+Supabase Auth has a project-level **URL Configuration** panel with two
+settings that together control where magic-link / recovery / OAuth
+callback URLs are allowed to redirect:
+
+- **Site URL** — the default fallback when a redirect_to isn't provided
+  OR when the provided redirect_to isn't in the allowlist
+- **Redirect URLs** — an exact-match / wildcard allowlist of redirect
+  destinations that the Auth API will honour
+
+Supabase's silent-fallback behaviour: if `booking.py::_generate_invite_link`
+(or any client-side `signInWithOtp({redirectTo: ...})`) passes a
+`redirect_to` that is NOT in the allowlist, the Auth API does NOT return
+an error. It **silently substitutes the Site URL** and returns a
+successful magic-link that lands the user at the wrong destination.
+
+From Supabase project creation until session 10, Site URL was
+`http://localhost:3000` (the Supabase project template default) and the
+Redirect URLs allowlist did not contain any of:
+- `https://db-bridge-5.preview.emergentagent.com/**` (pre-cutover portal)
+- `https://flyboyvideography-portal.vercel.app/**` (post-cutover portal)
+
+Every magic link Supabase ever issued for the Flyboy project — going
+back to the earliest booking flow test — was silently downgraded to
+`http://localhost:3000`. Nobody noticed for two reasons:
+1. Pre-Vercel-portal, the portal ran on preview URLs but developers
+   testing locally had `yarn dev` running on port 3000. Landing on
+   `http://localhost:3000` looked identical to success.
+2. Step 5's smoke test (the earlier end-to-end verification) did not
+   click through the magic link — it verified the DB state and Resend
+   log only.
+
+### How it was diagnosed
+
+Session 10 Step 10 was the first click-through test on the real Vercel
+portal. Nathan observed the magic link landed on bare
+`http://localhost:3000` (no path suffix), while tokens minted correctly.
+
+Initial hypothesis (mine): PORTAL_URL on Railway had reverted or was set
+wrong. Investigation ruled this out by directly probing Supabase's
+admin `generate_link` endpoint from the pod with four different
+`redirect_to` values and inspecting the returned action_link's
+embedded redirect. Result: every non-allowlisted URL collapsed to
+`http://localhost:3000` in the returned link, including the OLD
+preview pod URL that has been "working" in dev for months. This
+proved the bug was in Supabase's URL Configuration, not in Railway's
+PORTAL_URL or in booking.py's request formation.
+
+### Fix applied
+
+Supabase Dashboard → Authentication → URL Configuration:
+- **Site URL** changed from `http://localhost:3000` to
+  `https://flyboyvideography-portal.vercel.app`
+- **Redirect URLs** allowlist added (wildcards for future flexibility):
+  - `https://flyboyvideography-portal.vercel.app/**`
+  - `https://flyboyvideography-portal-*-bloomorbits-projects.vercel.app/**` (per-PR Vercel previews)
+  - `http://localhost:3000/**` (local dev workflow retained)
+
+Re-verified via same probe: Vercel portal URLs now round-trip
+unchanged. Step 10 end-to-end retest passed cleanly.
+
+### Rules going forward — how to avoid recurrence
+
+1. **After ANY change to Supabase URL Configuration, run an empirical
+   probe** — call `POST /auth/v1/admin/generate_link` with the exact
+   `redirect_to` your code will send, and confirm the returned
+   action_link contains that same URL, not the Site URL. Silent
+   fallback is invisible until it isn't.
+2. **When cutting over to a new portal URL** (e.g. custom domain like
+   `portal.flyboyvideography.com` post-DNS-cutover), the redirect
+   allowlist MUST be updated BEFORE the new URL is used in
+   `PORTAL_URL`. Skipping this produces the same class of silent
+   downgrade.
+3. **Site URL is the fallback, not the primary defence.** Anyone with
+   dashboard access can silently break every magic link by changing
+   Site URL to an attacker-controlled domain. Treat this field as a
+   security-relevant setting with the same change-control discipline
+   as CORS/rotation.
+4. **Preserve the empirical probe pattern** — the script in `booking.py:
+   _generate_invite_link` is idempotent and safe to call repeatedly
+   with test emails. If URL Configuration is ever changed later, run
+   the probe FIRST before waiting for a customer report of "the link
+   went to the wrong page."
+
 ## Pre-launch infra tasks (P0 — MUST be resolved before real, high-value traffic)
 
 > **HARD GATE (user directive, 2026-02):** NO live-mode Stripe traffic goes
