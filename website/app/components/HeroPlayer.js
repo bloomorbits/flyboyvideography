@@ -130,7 +130,7 @@ export default function HeroPlayer({ kicker, headline, sub, cta }) {
             data-testid="hero-mute-toggle"
             onClick={() => setMuted(!muted)}
             aria-label={muted ? "Unmute" : "Mute"}
-            className="text-cream/70 transition-colors hover:text-cream"
+            className="inline-flex h-11 w-11 items-center justify-center text-cream/70 transition-colors hover:text-cream"
           >
             {muted ? (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

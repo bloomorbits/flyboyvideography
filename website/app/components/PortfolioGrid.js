@@ -123,16 +123,18 @@ export default function PortfolioGrid() {
                 data-active={isActive}
                 role="tab"
                 aria-selected={isActive}
-                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] transition-all duration-200 ${
+                aria-label={`${cat.label}, ${counts[cat.id] || 0} items`}
+                className={`inline-flex min-h-[44px] items-center gap-2 rounded-full border px-4 py-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] transition-all duration-200 ${
                   isActive
                     ? "border-ink bg-ink text-cream"
                     : "border-ink/15 bg-white/50 text-ink/70 hover:border-ink/40 hover:text-ink"
                 }`}
               >
-                {cat.label}
+                <span>{cat.label}</span>
                 <span
+                  aria-hidden
                   className={`rounded-sm px-1.5 py-0.5 text-[9px] tracking-widest ${
-                    isActive ? "bg-cream/20 text-cream" : "bg-ink/5 text-ink/50"
+                    isActive ? "bg-cream/20 text-cream" : "bg-ink/5 text-ink/70"
                   }`}
                 >
                   {counts[cat.id] || 0}

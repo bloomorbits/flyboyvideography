@@ -70,11 +70,11 @@ export default function SiteFooter() {
             >
               Serving {SERVICE_AREA}
             </p>
-            <p className="mt-4 text-sm">
+            <p className="mt-4">
               <Link
                 href="/contact"
                 data-testid="footer-contact-link"
-                className="underline decoration-dotted underline-offset-4 hover:decoration-solid"
+                className="inline-flex min-h-[44px] items-center text-sm underline decoration-dotted underline-offset-4 hover:decoration-solid"
               >
                 Send us an enquiry →
               </Link>
@@ -91,7 +91,7 @@ export default function SiteFooter() {
                     rel="noopener noreferrer"
                     aria-label={s.label}
                     data-testid={s.testid}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-ink/15 text-ink transition-colors hover:border-ink hover:bg-ink hover:text-cream"
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/15 text-ink transition-colors hover:border-ink hover:bg-ink hover:text-cream"
                   >
                     {Glyph ? <Glyph /> : s.label}
                   </a>
@@ -102,7 +102,7 @@ export default function SiteFooter() {
 
           {/* Navigate */}
           <div>
-            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-ink/50">Navigate</p>
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-ink/70">Navigate</p>
             <ul className="mt-4 space-y-2 text-sm">
               {NAV.map((n) => (
                 <li key={n.href}>
@@ -116,7 +116,7 @@ export default function SiteFooter() {
 
           {/* Legal */}
           <div>
-            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-ink/50">Legal</p>
+            <p className="font-mono text-[11px] font-bold uppercase tracking-[0.25em] text-ink/70">Legal</p>
             <ul className="mt-4 space-y-2 text-sm">
               {LEGAL.map((l) => (
                 <li key={l.href}>

@@ -29,7 +29,7 @@ export default function HomePortfolioHighlights() {
       <div className="mx-auto max-w-6xl px-6 py-16 md:py-20">
         <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-end">
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/50">
+            <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/70">
               Recent work · Placeholder set
             </p>
             <h2 className="mt-2 font-display text-3xl font-bold tracking-tight md:text-4xl">
@@ -39,7 +39,7 @@ export default function HomePortfolioHighlights() {
           <Link
             href="/portfolio"
             data-testid="home-view-full-portfolio"
-            className="inline-flex items-center gap-2 rounded-full border border-ink/20 px-5 py-2.5 font-mono text-xs font-bold uppercase tracking-[0.2em] text-ink transition-colors hover:border-ink hover:bg-ink hover:text-cream"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-ink/20 px-5 py-2.5 font-mono text-xs font-bold uppercase tracking-[0.2em] text-ink transition-colors hover:border-ink hover:bg-ink hover:text-cream"
           >
             View full portfolio <span aria-hidden>→</span>
           </Link>

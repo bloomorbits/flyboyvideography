@@ -156,21 +156,21 @@ export default function CookieConsent() {
               <button
                 data-testid="cookie-consent-accept-all"
                 onClick={() => done(true)}
-                className="rounded-full bg-ink px-5 py-2 text-sm font-medium text-cream hover:bg-ink/90"
+                className="inline-flex min-h-[44px] items-center justify-center rounded-full bg-ink px-5 py-2 text-sm font-medium text-cream hover:bg-ink/90"
               >
                 Accept all
               </button>
               <button
                 data-testid="cookie-consent-necessary-only"
                 onClick={() => done(false)}
-                className="rounded-full border border-ink/20 px-5 py-2 text-sm font-medium text-ink hover:border-ink/50"
+                className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-ink/20 px-5 py-2 text-sm font-medium text-ink hover:border-ink/50"
               >
                 Only necessary
               </button>
               <button
                 data-testid="cookie-consent-manage"
                 onClick={() => setExpanded(true)}
-                className="rounded-full px-5 py-2 text-sm font-medium text-ink/70 underline underline-offset-4 hover:text-ink"
+                className="inline-flex min-h-[44px] items-center justify-center rounded-full px-5 py-2 text-sm font-medium text-ink/70 underline underline-offset-4 hover:text-ink"
               >
                 Manage
               </button>
