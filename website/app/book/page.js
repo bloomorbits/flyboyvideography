@@ -124,6 +124,13 @@ function BookPageInner() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [eventNotes, setEventNotes] = useState("");
+  // Consent capture (Migrations 010 + 010B, session 11) — frontend UX only;
+  // server-side enforcement lives in /api/booking/checkout.
+  const [tcAccepted, setTcAccepted] = useState(false);
+  const [modelReleaseOptedIn, setModelReleaseOptedIn] = useState(true); // opt-out model, pre-checked
+  const [minorsInvolved, setMinorsInvolved] = useState(false);
+  const [guardianName, setGuardianName] = useState("");
+  const [safeguardingAccepted, setSafeguardingAccepted] = useState(false);
   const [blocked, setBlocked] = useState([]);
   const [availLoading, setAvailLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -192,6 +199,12 @@ function BookPageInner() {
           phone: phone.trim() || null,
           event_notes: eventNotes.trim() || null,
           origin_url: window.location.origin,
+          // Consent (server also enforces — frontend is UX)
+          tc_accepted: tcAccepted,
+          model_release_opted_in: modelReleaseOptedIn,
+          minors_involved: minorsInvolved,
+          safeguarding_guardian_name: minorsInvolved ? guardianName.trim() : null,
+          safeguarding_consent_accepted: minorsInvolved ? safeguardingAccepted : false,
         }),
       });
       const j = await r.json().catch(() => ({}));
@@ -385,10 +398,117 @@ function BookPageInner() {
             </div>
 
             <p className="text-xs leading-relaxed text-ink/60">
-              By continuing, you agree to our <a className="underline" href="/terms">Terms</a> and{" "}
-              <a className="underline" href="/privacy">Privacy Policy</a>. The remaining balance will be
-              invoiced 5–7 days before your event and is due 3 days before.
+              The remaining balance will be invoiced 5–7 days before your event and is due 3 days before.
             </p>
+
+            {/* --- Consent capture (Migrations 010 + 010B, session 11) --- */}
+            <fieldset className="space-y-4 rounded-lg border border-ink/15 bg-sand p-5">
+              <legend className="px-2 font-mono text-[10px] uppercase tracking-widest text-ink/60">
+                Consent
+              </legend>
+
+              <label className="flex items-start gap-3 text-sm text-ink/90">
+                <input
+                  type="checkbox"
+                  data-testid="consent-tc"
+                  checked={tcAccepted}
+                  onChange={(e) => setTcAccepted(e.target.checked)}
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-ink/30"
+                  required
+                />
+                <span>
+                  I&apos;ve read and agree to the{" "}
+                  <a className="underline" href="/terms" target="_blank" rel="noreferrer">
+                    Booking Terms &amp; Conditions
+                  </a>
+                  . <span className="text-ink/60">(Required)</span>
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 text-sm text-ink/90">
+                <input
+                  type="checkbox"
+                  data-testid="consent-model-release"
+                  checked={modelReleaseOptedIn}
+                  onChange={(e) => setModelReleaseOptedIn(e.target.checked)}
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-ink/30"
+                />
+                <span>
+                  I&apos;m happy for Flyboy Videography to use content from my session on their portfolio and social media, per the{" "}
+                  <a className="underline" href="/model-release" target="_blank" rel="noreferrer">
+                    Model &amp; Talent Release
+                  </a>
+                  . <span className="text-ink/60">(Uncheck to opt out — this never affects your deliverables.)</span>
+                </span>
+              </label>
+
+              <div className="space-y-3 pt-1">
+                <p className="text-sm font-medium text-ink">
+                  Will anyone under 18 appear in this session?
+                </p>
+                <div className="flex gap-6">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="minors"
+                      data-testid="minors-no"
+                      checked={!minorsInvolved}
+                      onChange={() => setMinorsInvolved(false)}
+                      className="h-4 w-4"
+                    />
+                    <span>No</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="minors"
+                      data-testid="minors-yes"
+                      checked={minorsInvolved}
+                      onChange={() => setMinorsInvolved(true)}
+                      className="h-4 w-4"
+                    />
+                    <span>Yes</span>
+                  </label>
+                </div>
+              </div>
+
+              {minorsInvolved && (
+                <div className="space-y-3 rounded-md border border-ink/10 bg-cream p-4">
+                  <div>
+                    <label
+                      className="font-mono text-[11px] uppercase tracking-widest text-ink/70"
+                      htmlFor="guardianName"
+                    >
+                      Guardian&apos;s full name *
+                    </label>
+                    <input
+                      id="guardianName"
+                      data-testid="input-guardian-name"
+                      value={guardianName}
+                      onChange={(e) => setGuardianName(e.target.value)}
+                      className="mt-2 w-full rounded-lg border border-ink/20 bg-cream px-4 py-3 text-sm focus:border-ink focus:outline-none"
+                      placeholder="Parent or legal guardian"
+                    />
+                  </div>
+                  <label className="flex items-start gap-3 text-sm text-ink/90">
+                    <input
+                      type="checkbox"
+                      data-testid="consent-safeguarding"
+                      checked={safeguardingAccepted}
+                      onChange={(e) => setSafeguardingAccepted(e.target.checked)}
+                      className="mt-1 h-4 w-4 shrink-0 rounded border-ink/30"
+                    />
+                    <span>
+                      As parent or legal guardian, I give consent per the{" "}
+                      <a className="underline" href="/safeguarding-consent" target="_blank" rel="noreferrer">
+                        Children &amp; Safeguarding Consent
+                      </a>{" "}
+                      page. <span className="text-ink/60">(Required)</span>
+                    </span>
+                  </label>
+                </div>
+              )}
+            </fieldset>
 
             {error && (
               <p data-testid="booking-error" role="alert" className="rounded-lg bg-red-100 px-4 py-3 text-sm text-red-800">
@@ -400,7 +520,11 @@ function BookPageInner() {
               <button
                 type="submit"
                 data-testid="pay-deposit-btn"
-                disabled={submitting}
+                disabled={
+                  submitting ||
+                  !tcAccepted ||
+                  (minorsInvolved && (!guardianName.trim() || !safeguardingAccepted))
+                }
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-cream transition-opacity hover:opacity-90 disabled:opacity-40"
               >
                 {submitting ? "Redirecting to Stripe…" : `Pay ${gbp(priceDeposit)} deposit →`}

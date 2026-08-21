@@ -266,6 +266,196 @@ deploy from Bloom Orbit's GitHub identity, or — worse — will disconnect
 Bloom Orbit's GitHub access first and break production deploys until
 the client-side reconnect is figured out.
 
+## Railway Variables change-control (lessons from 2026-02 cutover session 10)
+
+The `CORS_ORIGINS` and `ALLOWED_ORIGIN_URLS` env vars on Railway drifted
+during the CRA portal deploy (Step 9). The pod's `/app/backend/.env`
+does NOT match Railway's values by design (pod loose for dev, Railway
+tight for prod), and there is currently no automated mechanism keeping
+them in sync — every drift is a manual copy-paste event. Full timeline
+so future sessions understand not just what happened but why:
+
+### What drifted
+
+At end of session-10 mid-Step-9 discovery, Railway's live env showed:
+```
+CORS_ORIGINS=https://flyboyvideography.com,https://www.flyboyvideography.com,https://flyboyvideography.vercel.app,https://db-bridge-5.preview.emergentagent.com,http://localhost:3001,http://localhost:3000,https://flyboyvideography-portal.vercel.app
+ALLOWED_ORIGIN_URLS=https://flyboyvideography.com,https://www.flyboyvideography.com,https://flyboyvideography.vercel.app,https://db-bridge-5.preview.emergentagent.com
+```
+
+Compared to the Step-2 message's prescribed values, three unexpected
+entries were present in `CORS_ORIGINS`:
+- `http://localhost:3001` and `http://localhost:3000` — Nathan's dev-workflow origins, only ever needed on the pod's local backend
+- `https://flyboyvideography-portal.vercel.app` — the Vercel CRA portal URL that had just been deployed in Step 9 but not yet formally added to Railway's allowlist (Step 9.6 hadn't been run)
+
+### Two separate root causes, one convergence
+
+**Localhost entries:** the pod's `/app/backend/.env` file has
+`http://localhost:3001,http://localhost:3000` in `CORS_ORIGINS` for
+local `yarn dev` testing. The Step-2 instruction told Nathan to "copy
+secret values from `.env`" but presented `CORS_ORIGINS` and
+`ALLOWED_ORIGIN_URLS` as public copy-paste blocks with the *shorter,
+production-only* lists inline. It didn't explicitly say "the value in
+`.env` is intentionally LONGER than the value I'm giving you here — do
+NOT merge them." Nathan (reasonably) merged the two, importing the
+localhost entries into Railway.
+
+**Portal URL entry:** untraceable to any automated tool — no agent I
+have available has Railway API credentials, and no Vercel/Railway
+marketplace integration was installed on either project. The most
+plausible explanation is that during Vercel setup Nathan preemptively
+opened Railway in another tab and added the portal URL to
+`CORS_ORIGINS` before Step 9.6 was proposed, then forgot the manual
+edit. Governance-wise this is a "config value with no attribution" —
+the exact class of ambiguity that leads to real problems later.
+
+### How it was diagnosed
+
+1. Vercel portal deployed at `https://flyboyvideography-portal.vercel.app`.
+2. Nathan opened the portal, saw CORS working from browser DevTools
+   Network → surprising, because Step 9.6 (add portal URL to Railway
+   allowlists) had not been run.
+3. Live probe from the pod: `curl -H "Origin: https://flyboyvideography-portal.vercel.app" https://flyboyvideography-production.up.railway.app/api/health`
+   returned `access-control-allow-origin: https://flyboyvideography-portal.vercel.app` (echoed).
+4. Comparison probes confirmed the app-level allowlist is still
+   exact-match (random `.vercel.app` origins correctly rejected). So
+   the portal URL MUST be in `CORS_ORIGINS` on Railway even though we
+   didn't record adding it.
+5. Nathan pasted Railway's live values back → revealed the two
+   localhost entries AND the portal URL, none of which matched Step-2
+   prescription.
+6. Comparison against pod `/app/backend/.env` showed the localhost
+   entries came from the pod file, but the portal URL was NOT in the
+   pod file — proving there were two separate mechanisms.
+
+### Fix (applied at Step 9.6)
+
+- `CORS_ORIGINS` and `ALLOWED_ORIGIN_URLS` on Railway both explicitly
+  updated to the SAME list: production domains + Vercel public site +
+  Vercel CRA portal + preview pod (until Step 14 retires it). No
+  localhost entries on production.
+- `PORTAL_URL` updated from the preview pod URL to
+  `https://flyboyvideography-portal.vercel.app` so booking confirmation
+  emails point clients at the real portal.
+- Pod's `/app/backend/.env` left alone deliberately — the localhost
+  entries are correct for local dev workflow and shouldn't need to
+  match Railway.
+
+### Rules going forward — how to avoid the same drift
+
+1. **When giving a Railway env-var block in a runbook, ALWAYS state
+   whether the block is exhaustive or additive**, and whether it
+   should MATCH the pod's `.env` or intentionally DIVERGE. Ambiguity
+   here directly caused this session's drift.
+2. **Any change to Railway's Variables tab MUST be recorded in the
+   session log** (either the PRD.md session entry or a rotation log
+   row here). Untracked config changes create ambiguity, even when
+   the config is functionally correct.
+3. **Periodic reconciliation:** at the start of any significant
+   Railway operation, `curl` the live behaviour (e.g. an ACAO probe
+   with an unknown origin) and compare against expectations. Config
+   drift caught empirically is cheap; config drift discovered during
+   an incident is expensive.
+4. **The pod's `.env` and Railway's env vars are two separate sources
+   of truth by design** — the pod is dev-loose, Railway is prod-tight.
+   There is NO tooling that syncs them; drift between them is
+   expected and correct. Do not "fix" apparent drift without
+   understanding which side should be authoritative for the specific
+   variable.
+
+## Supabase Auth URL Configuration governance (lessons from 2026-02 cutover session 10, Step 10)
+
+A latent bug from initial Supabase project setup was surfaced during
+Step 10's end-to-end validation and fixed the same night. Documented
+here because it's the exact class of misconfiguration that can bite
+again if URL Configuration is ever changed later without empirical
+verification.
+
+### What the latent bug was
+
+Supabase Auth has a project-level **URL Configuration** panel with two
+settings that together control where magic-link / recovery / OAuth
+callback URLs are allowed to redirect:
+
+- **Site URL** — the default fallback when a redirect_to isn't provided
+  OR when the provided redirect_to isn't in the allowlist
+- **Redirect URLs** — an exact-match / wildcard allowlist of redirect
+  destinations that the Auth API will honour
+
+Supabase's silent-fallback behaviour: if `booking.py::_generate_invite_link`
+(or any client-side `signInWithOtp({redirectTo: ...})`) passes a
+`redirect_to` that is NOT in the allowlist, the Auth API does NOT return
+an error. It **silently substitutes the Site URL** and returns a
+successful magic-link that lands the user at the wrong destination.
+
+From Supabase project creation until session 10, Site URL was
+`http://localhost:3000` (the Supabase project template default) and the
+Redirect URLs allowlist did not contain any of:
+- `https://db-bridge-5.preview.emergentagent.com/**` (pre-cutover portal)
+- `https://flyboyvideography-portal.vercel.app/**` (post-cutover portal)
+
+Every magic link Supabase ever issued for the Flyboy project — going
+back to the earliest booking flow test — was silently downgraded to
+`http://localhost:3000`. Nobody noticed for two reasons:
+1. Pre-Vercel-portal, the portal ran on preview URLs but developers
+   testing locally had `yarn dev` running on port 3000. Landing on
+   `http://localhost:3000` looked identical to success.
+2. Step 5's smoke test (the earlier end-to-end verification) did not
+   click through the magic link — it verified the DB state and Resend
+   log only.
+
+### How it was diagnosed
+
+Session 10 Step 10 was the first click-through test on the real Vercel
+portal. Nathan observed the magic link landed on bare
+`http://localhost:3000` (no path suffix), while tokens minted correctly.
+
+Initial hypothesis (mine): PORTAL_URL on Railway had reverted or was set
+wrong. Investigation ruled this out by directly probing Supabase's
+admin `generate_link` endpoint from the pod with four different
+`redirect_to` values and inspecting the returned action_link's
+embedded redirect. Result: every non-allowlisted URL collapsed to
+`http://localhost:3000` in the returned link, including the OLD
+preview pod URL that has been "working" in dev for months. This
+proved the bug was in Supabase's URL Configuration, not in Railway's
+PORTAL_URL or in booking.py's request formation.
+
+### Fix applied
+
+Supabase Dashboard → Authentication → URL Configuration:
+- **Site URL** changed from `http://localhost:3000` to
+  `https://flyboyvideography-portal.vercel.app`
+- **Redirect URLs** allowlist added (wildcards for future flexibility):
+  - `https://flyboyvideography-portal.vercel.app/**`
+  - `https://flyboyvideography-portal-*-bloomorbits-projects.vercel.app/**` (per-PR Vercel previews)
+  - `http://localhost:3000/**` (local dev workflow retained)
+
+Re-verified via same probe: Vercel portal URLs now round-trip
+unchanged. Step 10 end-to-end retest passed cleanly.
+
+### Rules going forward — how to avoid recurrence
+
+1. **After ANY change to Supabase URL Configuration, run an empirical
+   probe** — call `POST /auth/v1/admin/generate_link` with the exact
+   `redirect_to` your code will send, and confirm the returned
+   action_link contains that same URL, not the Site URL. Silent
+   fallback is invisible until it isn't.
+2. **When cutting over to a new portal URL** (e.g. custom domain like
+   `portal.flyboyvideography.com` post-DNS-cutover), the redirect
+   allowlist MUST be updated BEFORE the new URL is used in
+   `PORTAL_URL`. Skipping this produces the same class of silent
+   downgrade.
+3. **Site URL is the fallback, not the primary defence.** Anyone with
+   dashboard access can silently break every magic link by changing
+   Site URL to an attacker-controlled domain. Treat this field as a
+   security-relevant setting with the same change-control discipline
+   as CORS/rotation.
+4. **Preserve the empirical probe pattern** — the script in `booking.py:
+   _generate_invite_link` is idempotent and safe to call repeatedly
+   with test emails. If URL Configuration is ever changed later, run
+   the probe FIRST before waiting for a customer report of "the link
+   went to the wrong page."
+
 ## Pre-launch infra tasks (P0 — MUST be resolved before real, high-value traffic)
 
 > **HARD GATE (user directive, 2026-02):** NO live-mode Stripe traffic goes
