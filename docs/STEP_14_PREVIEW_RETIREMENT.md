@@ -4,6 +4,7 @@
 **Window start:** 2026-08-21T18:50Z (first Railway audit row landed)
 **Earliest safe execution:** 2026-08-22T18:50Z
 **Executor:** you (with agent standing by for verification steps)
+**Execution mode:** you execute each phase manually; agent verifies before you proceed to the next. **NO back-to-back automation of Phases 1→3.** A hard checkpoint (agent verification + your explicit "proceed") sits between every phase. Rationale: tonight established that things can look fine right up until they aren't — the api_version landmine was invisible at every API-surface check until we hit the dashboard delivery tab. Same discipline applies to every destructive step here.
 **Rollback safety:** every destructive step (delete endpoint, remove env var) has a documented rollback below.
 
 ---
