@@ -169,7 +169,7 @@ export default function AuthPage() {
 
           <p
             data-testid="auth-bloomorbit-credit"
-            className="mt-10 text-center text-xs uppercase tracking-[0.25em] text-ink/50"
+            className="mt-10 text-center text-xs uppercase tracking-[0.25em] text-ink/70"
           >
             Built by{" "}
             <a

@@ -5,6 +5,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#09090b" />
     <title>Flyboy Videography — Client Portal</title>
+    <meta
+      name="description"
+      content="Client portal for Flyboy Videography — securely review deliverables, request revisions, manage retainers and invoices for your booked shoot."
+    />
+    <!--
+      Robots: the portal is authenticated by design. There's nothing here
+      we want indexed, and the /robots.txt at the site root also disallows.
+    -->
+    <meta name="robots" content="noindex, nofollow" />
+
+    <!--
+      Google Fonts, loaded non-render-blocking.
+
+      Previously imported via @import in src/index.css — that pattern
+      forces the browser through a 4-hop waterfall (index.html → main.css
+      → @import CSS → woff2) and blocks first paint until the whole chain
+      resolves (Lighthouse flagged 1,323 ms of render-blocking here).
+
+      The pattern below:
+        1. Preconnect to both Google Fonts hosts (saves TLS+DNS on the CSS
+           fetch and the subsequent woff2 fetches).
+        2. Load the stylesheet with media="print" + onload swap — this
+           tells the browser "you don't need this to render", so it's
+           async, then flips to all-media once loaded. Fallback fonts
+           (Inter -> sans-serif; Space Grotesk -> serif; JetBrains Mono ->
+           monospace) render immediately.
+        3. font-display: swap in the URL means the real fonts swap in
+           with no FOIT.
+        4. The <noscript> fallback loads the stylesheet synchronously
+           for users with JS disabled — they lose the non-blocking speedup
+           but still get the fonts. Almost nobody, but zero cost to keep.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      />
+    </noscript>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

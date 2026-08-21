@@ -27,19 +27,19 @@ export default function Retainers() {
                 <StatusPill status={s.status} />
               </div>
               <p className="mt-4 font-display text-4xl font-extrabold tracking-tighter text-accent">
-                {fmtMoney(s.monthly_price)}<span className="text-base font-medium text-ink/50">/mo</span>
+                {fmtMoney(s.monthly_price)}<span className="text-base font-medium text-ink/70">/mo</span>
               </p>
               <div className="mt-6 grid grid-cols-3 gap-4 border-t border-dune pt-5 text-sm">
                 <div>
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-ink/50">Videos / mo</p>
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-ink/70">Videos / mo</p>
                   <p className="mt-1 text-ink/70">{s.videos_per_month}</p>
                 </div>
                 <div>
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-ink/50">Started</p>
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-ink/70">Started</p>
                   <p className="mt-1 text-ink/70">{fmtDate(s.started_on)}</p>
                 </div>
                 <div>
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-ink/50">Renews</p>
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-ink/70">Renews</p>
                   <p className="mt-1 text-ink/70">{fmtDate(s.renews_on)}</p>
                 </div>
               </div>

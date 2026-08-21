@@ -93,7 +93,7 @@ export default function DeliverableDetail() {
     }
   };
 
-  if (!deliv) return <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/50">Loading…</p>;
+  if (!deliv) return <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/70">Loading…</p>;
 
   const roundsUsed = deliv.revision_rounds_used ?? 0;
   const roundsIncluded = deliv.included_revision_rounds ?? 0;
@@ -108,7 +108,7 @@ export default function DeliverableDetail() {
         <div>
           <div className="mb-2 flex items-center gap-3">
             <SourceBadge type={deliv.booking_id ? "booking" : "subscription"} />
-            <span className="font-mono text-xs text-ink/50">VERSION {deliv.version}</span>
+            <span className="font-mono text-xs text-ink/70">VERSION {deliv.version}</span>
             <span data-testid="revision-rounds-chip" className={`rounded px-2 py-0.5 font-mono text-[11px] font-bold ${roundsUsed >= roundsIncluded ? "bg-[#B45309]/15 text-[#B45309]" : "bg-sand text-ink/60"}`}>
               REVISIONS {roundsUsed}/{roundsIncluded} INCLUDED
             </span>
@@ -212,7 +212,7 @@ export default function DeliverableDetail() {
             </form>
 
             <div className="mt-5 space-y-4" data-testid="review-thread-list">
-              {comments.length === 0 && <p className="text-sm text-ink/50">No notes yet on this version.</p>}
+              {comments.length === 0 && <p className="text-sm text-ink/70">No notes yet on this version.</p>}
               {comments.map((c, i) => (
                 <div key={c.id} className={`rise rounded-md border border-dune p-4 ${c.resolved ? "opacity-50" : ""}`} data-testid={`review-comment-${i}`}>
                   <div className="flex items-center justify-between gap-2">
@@ -222,13 +222,13 @@ export default function DeliverableDetail() {
                           {secondsToTimecode(Number(c.timestamp_seconds))}
                         </span>
                       )}
-                      <span className="font-mono text-[10px] uppercase tracking-widest text-ink/50">v{c.version}</span>
+                      <span className="font-mono text-[10px] uppercase tracking-widest text-ink/70">v{c.version}</span>
                     </div>
                     {(profile?.role === "admin" || profile?.user_id === c.author_user_id) && (
                     <button
                       data-testid={`comment-resolve-btn-${i}`}
                       onClick={() => toggleResolved(c)}
-                      className={`flex items-center gap-1 text-xs font-bold ${c.resolved ? "text-[#15803D]" : "text-ink/50 hover:text-[#15803D]"}`}
+                      className={`flex items-center gap-1 text-xs font-bold ${c.resolved ? "text-[#15803D]" : "text-ink/70 hover:text-[#15803D]"}`}
                       style={{ transition: "color 0.15s ease" }}
                     >
                       {c.resolved ? <CheckCircle2 size={14} /> : <Circle size={14} />}
@@ -237,7 +237,7 @@ export default function DeliverableDetail() {
                     )}
                   </div>
                   <p className="mt-2 text-sm text-ink">{c.comment}</p>
-                  <p className="mt-2 text-xs text-ink/50">
+                  <p className="mt-2 text-xs text-ink/70">
                     {c.author_name} {c.author_role === "admin" && <span className="text-[#B45309]">· studio</span>} · {fmtDate(c.created_at?.slice(0, 10))}
                   </p>
                 </div>

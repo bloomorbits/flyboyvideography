@@ -86,21 +86,21 @@ export default function Bookings() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="font-display text-xl font-bold tracking-tight">{b.title}</p>
-                  <p className="mt-1 font-mono text-xs uppercase tracking-widest text-ink/50">{b.shoot_type || "Shoot"}</p>
+                  <p className="mt-1 font-mono text-xs uppercase tracking-widest text-ink/70">{b.shoot_type || "Shoot"}</p>
                 </div>
                 <StatusPill status={b.status} />
               </div>
               <div className="mt-5 grid grid-cols-3 gap-4 border-t border-dune pt-4 text-sm">
                 <div>
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-ink/50">Date</p>
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-ink/70">Date</p>
                   <p className="mt-1 text-ink/70">{fmtDate(b.shoot_date)}</p>
                 </div>
                 <div>
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-ink/50">Location</p>
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-ink/70">Location</p>
                   <p className="mt-1 truncate text-ink/70">{b.location || "—"}</p>
                 </div>
                 <div>
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-ink/50">Budget</p>
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-ink/70">Budget</p>
                   <p className="mt-1 text-ink/70">{b.budget ? fmtMoney(b.budget) : "TBD"}</p>
                 </div>
               </div>

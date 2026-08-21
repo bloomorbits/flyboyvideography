@@ -20,7 +20,7 @@ export default function Invoices() {
         <Empty text="No invoices yet." />
       ) : (
         <Card>
-          <div className="grid grid-cols-12 gap-4 border-b border-dune px-6 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-ink/50">
+          <div className="grid grid-cols-12 gap-4 border-b border-dune px-6 py-3 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-ink/70">
             <span className="col-span-3">Invoice</span>
             <span className="col-span-2">Source</span>
             <span className="col-span-2">Amount</span>
