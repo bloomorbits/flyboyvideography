@@ -482,23 +482,30 @@ Order preserved from session 9, with `SEC-001`, `PL-INFRA-1`, `PL-INFRA-2` all s
 
 ### Next-session pickup for a fresh agent
 
-**⚠ Step 13 is a real end-to-end validation on the customer path — same weight as Step 10, but from the front door.** Real Stripe test-mode payment, real Resend email, real magic-link click-through. The difference from Step 10 is that Step 13 STARTS from `https://flyboyvideography.com/book` (real customer entry point), exercising the browser + JS bundle + Stripe.js redirect + Vercel-hosted success page — layers that Step 10's curl-driven flow couldn't reach. Budget the session accordingly. If it produces test data, follow the Step 11 pattern to purge (portal admin button + FK-safe SQL + auth.users deletion).
+**⚠ Step 13 is a real end-to-end validation on the customer path — same weight as Step 10, but from the front door AND now against the consent-enforced flow shipped in session 11.** Real Stripe test-mode payment, real Resend email, real magic-link click-through, PLUS validation that the consent step is UX-visible + server-enforced. If it produces test data, follow the Step 11 pattern to purge.
 
-1. Read `/app/docs/RAILWAY_VERCEL_CUTOVER.md` (deployed environments table + domain gotcha + emergent-only deps sections at top).
-2. Read `/app/docs/CREDENTIAL_ROTATION.md` — especially:
-   - § "HARD GATE STATUS" (both PL-INFRA items CLOSED, live-mode Stripe unblocked)
-   - § "Railway Variables change-control" (2026-02 session 10 CORS drift lesson)
-   - § "Supabase Auth URL Configuration governance" (2026-02 session 10 latent bug — MUST verify empirically after ANY future URL Configuration change)
-3. Confirm with user that they want to proceed to **Step 13 (real customer-path end-to-end test)** — user's approach for the whole cutover has been "one step at a time, confirm what happened before moving on."
-4. Step 13 mechanics:
-   - Open `https://flyboyvideography.com/book` in an incognito browser window.
-   - Pick a package + a test date ≥ 60 days out with no seed collision (verify first: `SELECT id FROM bookings WHERE event_date = '<date>';` returns 0).
-   - Use a Gmail plus-address the user can access. Do NOT use the literal string `YOUR.EMAIL` — that placeholder-copied-verbatim issue in Step 5 (session 10) is documented in the CREDENTIAL_ROTATION.md governance sections; explicit placeholder brackets or code-fence placeholders help.
-   - Complete Stripe checkout with `4242 4242 4242 4242`.
-   - Verify the same four DB effects as Step 10 (`payment_transactions.payment_status=paid`, `bookings.status=confirmed`, fresh `clients` row, empty `date_slot_locks`).
-   - Verify email arrives, redirect_to in magic link points at `https://flyboyvideography-portal.vercel.app/auth?welcome=1` (Supabase URL Configuration should already honour this from session 10's fix).
-   - Click magic link → land on Vercel portal → session established → booking visible.
-5. **If Step 13 passes:** proceed to **Step 14 — retire Emergent-preview Stripe webhook + optionally remove `db-bridge-5.preview.emergentagent.com` from Railway's `CORS_ORIGINS` + `ALLOWED_ORIGIN_URLS`**. This is the "cutover fully complete" step. Also decide the follow-up on the pod's `/app/website/.env.local` (still points at preview; three options documented in Step 12).
-6. Test credentials for portal admin login remain unchanged — see `/app/memory/test_credentials.md`. Portal is at `https://flyboyvideography-portal.vercel.app`.
-7. If Step 13 surfaces a bug in the customer-path chain, feature freeze remains in effect — fix the bug, do NOT detour into P1 backlog work (Enquiry Inbox, Retainers, Welcome Tour). Enquiry Inbox is the first post-cutover item per session 10's confirmed plan.
-8. Session 10 ended at a genuinely strong checkpoint: public site fully cut over to Railway, empirically verified with zero residual preview traffic. Everything WORKS on the new stack today; Step 13 is validation of the final untested vector (customer-facing browser flow), not a fix-something-broken step.
+**Consent capture — what shipped in session 11 (must be tested by Step 13, was NOT tested with a real payment yet):**
+- Migrations 010 + 010B applied — 6 consent columns on `bookings` AND `booking_intents` (primary source of truth + defense-in-depth via Stripe metadata)
+- `booking.py::CheckoutIn` extended, checkout endpoint hard-gates 400 if T&Cs unchecked or minors+missing guardian/safeguarding
+- 6 pytests in `tests/test_consent_enforcement.py`, mutation-validated twice
+- `/terms` rewritten with §7 cooling-off + solicitor banner; new `/model-release` + `/safeguarding-consent` pages with Nathan's copy (`LAST_UPDATED = null` renders "Not yet published — pending solicitor review")
+- `/book` step 2 consent fieldset: T&Cs required, model-release pre-checked opt-out, minors radio → conditional guardian field + safeguarding checkbox. Pay button disabled until valid.
+- **Nathan has NOT clicked through the consent UI in browser yet — that's a prerequisite for Step 13.**
+
+1. Read `/app/docs/RAILWAY_VERCEL_CUTOVER.md` (deployed environments table + gotcha sections).
+2. Read `/app/docs/CREDENTIAL_ROTATION.md` — HARD GATE STATUS + Railway Variables + Supabase Auth URL Configuration governance sections.
+3. **Verify session-11 push reached Railway** — quick pre-check: `curl -X POST https://flyboyvideography-production.up.railway.app/api/booking/checkout -H "Content-Type: application/json" -d '{"package_id":"graduation","tier_name":"","event_date":"2029-01-01","email":"test@flyboytest.com","full_name":"pre-check","origin_url":"https://flyboyvideography.com","tc_accepted":false}'` should return `400` mentioning "Terms & Conditions". If it returns 200 or 500, session-11 hasn't deployed — resolve before proceeding.
+4. **Nathan browser click-through** on `flyboyvideography.com/book` first: consent fieldset visible, model-release pre-checked, Pay button disabled until T&Cs ticked, minors=Yes reveals guardian field + safeguarding checkbox.
+5. Confirm with user then proceed to Step 13.
+6. Step 13 mechanics (same as Step 10 + consent verification):
+   - Incognito browser → `flyboyvideography.com/book` → real Gmail plus-address (NOT literal `YOUR.EMAIL`) → date with no seed collision → fill consent step → complete Stripe with `4242 4242 4242 4242`.
+   - Verify same 4 DB effects as Step 10.
+   - **NEW: verify consent columns populated** — `SELECT tc_accepted_at, tc_accepted_ip, model_release_opted_in, minors_involved, safeguarding_guardian_name, safeguarding_consent_accepted_at FROM bookings WHERE stripe_session_id = '<sid>';`. Expect `tc_accepted_at` and `tc_accepted_ip` non-null; others matching what Nathan clicked.
+   - Verify email + magic link → Vercel portal session.
+7. If Step 13 passes: Step 14 — retire preview Stripe webhook, prune preview URL from Railway allowlists, decide `/app/website/.env.local` follow-up.
+8. **Post-cutover P1 queue (freeze intact until Steps 13 + 14):**
+   - Enquiry Inbox (admin view of `contact_enquiries`) — was #1 per session 10
+   - Admin-editable pricing (packages table + admin UI, replaces `lib/pricing.js`) — proposed session 11, deferred per freeze; Nathan's call on ordering vs Enquiry Inbox
+   - Retainer signup, Welcome tour, per backlog
+9. If Step 13 surfaces bugs in consent OR payment chain, freeze remains — fix bug, don't detour to P1. Consent has mutation-tested pytests but has NOT survived a real Stripe round-trip yet.
+10. Portal admin login unchanged — see `/app/memory/test_credentials.md`.
