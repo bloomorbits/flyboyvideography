@@ -65,9 +65,24 @@ Replace `<your-cra-portal>` with the actual Vercel-assigned subdomain after step
 ## Stripe webhook endpoint (do BEFORE cutting over)
 1. Stripe Dashboard → Developers → Webhooks → Add endpoint
 2. URL: `https://<your-railway-app>.up.railway.app/api/stripe/webhook`
-3. Events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`
+3. Events: `checkout.session.completed`, `checkout.session.expired` (add async payment events only if/when async payment methods are enabled)
 4. Copy the signing secret (`whsec_...`) → paste as `STRIPE_WEBHOOK_SECRET` on Railway
 5. **Do NOT delete the old Emergent-preview webhook yet** — leave both live until step 4 of the cutover confirms the new one is healthy.
+
+### If creating via API (not dashboard) — 🛑 DO NOT PASS `api_version`
+Landmine we hit during the 2026-02 cutover: calling `stripe.WebhookEndpoint.create(url=..., enabled_events=..., api_version="2026-07-29.dahlia")` produces an endpoint that reports `status=enabled` in every API view (both v1 `/v1/webhook_endpoints/{id}` and v2 `/v2/core/event_destinations/{id}`), accepts `modify()` writes, and shows in the dashboard as active — but Stripe routes **zero events** to it. The only visible difference from a working endpoint is the non-null `api_version` field. `WebhookEndpoint.modify()` cannot change `api_version` after creation, so the only recovery is delete + recreate.
+
+**Rule:** Omit `api_version` when creating webhook endpoints via API. Let it default to `null` so it inherits the account's default version at delivery time — same as if you'd used the dashboard.
+
+### Post-creation verification — MANDATORY, not optional
+Do NOT trust `status: enabled` or `pending_webhooks: 0` as proof of a working endpoint. The delivery-inert failure mode above passes both checks. Instead:
+
+1. Trigger a real `checkout.session.completed` event via a test checkout (or `stripe trigger checkout.session.completed` if using Stripe CLI).
+2. Open Stripe Dashboard → Developers → Webhooks → click the new endpoint → **"Event deliveries" tab**.
+3. Confirm the event shows up with **HTTP 200** logged against THIS endpoint id specifically.
+4. Only after that visual confirmation is the endpoint considered live.
+
+If the tab shows zero deliveries for an event that `stripe.Event.retrieve(evt_id)` confirms was created, the endpoint is in the delivery-inert state (or a similar hidden failure mode) and must be recreated. Cross-referencing `pending_webhooks == 0` is NOT sufficient — with only one subscribed endpoint, one 200 from any endpoint closes the counter.
 
 ## Env var to update on Vercel (Next.js public site) at cutover
 Vercel dashboard → `flyboyvideography` project → Settings → Environment Variables:
@@ -76,8 +91,18 @@ NEXT_PUBLIC_API_BASE = https://<your-railway-app>.up.railway.app
 ```
 **Then redeploy** — `NEXT_PUBLIC_*` is baked at build time.
 
-## After Railway is up: verify the XFF trust boundary
-Per user directive (session 9): do NOT trust `X-Real-IP` on Railway blind. Repeat the empirical probe used against Emergent before flipping `_client_ip()` to prefer it:
+## After Railway is up: verify the XFF trust boundary — ✅ DONE (2026-02 cutover)
+
+This section is retained as a HISTORICAL record. The verification has already been executed against `flyboyvideography-production.up.railway.app` and the runbook items closed out. **Do NOT re-add the probe route** unless you're moving off Railway to a new deployment target — in which case, re-run this same procedure against the new target.
+
+**What was done (commit trail):**
+- `a4f0a68` — added temporary `/api/_probe/ip` route to `server.py`.
+- Probe run against Railway with spoofed `X-Real-IP` and `X-Forwarded-For` inputs. 4 scenarios executed (A/B/C/D). Real pod public IP: `34.16.56.64`. Every spoofed prefix was dropped by Railway's ingress. Full result table lives in `CREDENTIAL_ROTATION.md § PL-INFRA-1 → "Verified resolved on Railway (2026-02 cutover)"`.
+- `f0d53f9` — probe route removed, `_client_ip()` in `backend/booking.py:150-195` updated to prefer `X-Real-IP` (leftmost XFF fallback, then `request.client.host`). Confirmed 404 on `/api/_probe/ip` post-redeploy.
+
+**Steady state:** `GET https://flyboyvideography-production.up.railway.app/api/_probe/ip` → `404 Not Found`. This is INTENTIONAL. PL-INFRA-1 is CLOSED.
+
+**If the deployment ever moves off Railway** (new target = Fly, Render, custom k8s, etc.):
 
 1. Temporarily add to `server.py`:
    ```python
@@ -90,11 +115,10 @@ Per user directive (session 9): do NOT trust `X-Real-IP` on Railway blind. Repea
            "cf_connecting_ip": request.headers.get("cf-connecting-ip"),
        }
    ```
-2. `curl -H "X-Forwarded-For: 1.2.3.4" -H "X-Real-IP: 1.2.3.4" https://<railway>/api/_probe/ip`
-3. Confirm `x_real_ip` in the response is NOT `1.2.3.4` (Railway stripped the spoof) and matches your actual public IP.
-4. If confirmed: update `_client_ip()` in `booking.py` to prefer `x-real-ip` before XFF fallback.
-5. Remove the probe endpoint.
-6. Only then mark PL-INFRA-1 as verified-resolved in `CREDENTIAL_ROTATION.md`.
+2. `curl -H "X-Forwarded-For: 1.2.3.4" -H "X-Real-IP: 1.2.3.4" https://<new-target>/api/_probe/ip`
+3. Confirm `x_real_ip` in the response is NOT `1.2.3.4` (edge stripped the spoof) and matches your actual public IP.
+4. If confirmed: no code change needed (the current `_client_ip()` already prefers `X-Real-IP`). If NOT confirmed: `_client_ip()` must be reworked — do NOT flip live until this is resolved.
+5. Remove the probe endpoint in the same commit that captures the empirical table into `CREDENTIAL_ROTATION.md § PL-INFRA-1`.
 
 ## Pre-live-traffic checklist (Supabase side)
 Per your decision to keep the existing Supabase project (preserves the migration 006–009 introspection trail):

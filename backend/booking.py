@@ -58,6 +58,13 @@ RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "Flyboy Videography <boo
 PUBLIC_SITE_URL = os.environ.get("PUBLIC_SITE_URL", "https://flyboyvideography.com")
 PORTAL_URL = os.environ.get("PORTAL_URL", os.environ.get("REACT_APP_BACKEND_URL", ""))
 
+# Per-pod identity for webhook audit rows. Set differently on each deployment:
+#   Railway  -> "railway"
+#   Preview  -> "preview"
+#   Local    -> "local"
+# Defaults to "unknown" so audit still writes even if env is missing.
+POD_SOURCE_LABEL = os.environ.get("POD_SOURCE_LABEL", "unknown")
+
 LOCK_TTL_MINUTES = 5
 
 # Availability window: how far ahead we let visitors book.
@@ -1065,39 +1072,159 @@ def _finalise_paid_session(session_id: str, payment_intent_id: Optional[str]) ->
 
 @router.post("/api/stripe/webhook")
 async def stripe_webhook(request: Request):
+    """Stripe webhook handler.
+
+    Every receipt writes one row to public.webhook_deliveries_audit tagged
+    with POD_SOURCE_LABEL so we can prove per-endpoint delivery health after
+    the fact — see Migration 011 for the schema and docs/RAILWAY_VERCEL_CUTOVER.md
+    for the cutover story that motivated this table.
+    """
+    import time as _time
+
+    started = _time.monotonic()
     payload = await request.body()
     sig = request.headers.get("stripe-signature", "")
+
+    # Signature verification. Failures still get audited so we can spot
+    # attacker probing per pod.
+    signature_valid = True
+    event = None
     try:
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
     except stripe.error.SignatureVerificationError:
-        raise HTTPException(400, "Invalid signature")
+        signature_valid = False
     except Exception as e:
         log.warning("webhook parse failed: %s", e)
-        raise HTTPException(400, "Bad payload")
+        signature_valid = False
+
+    if not signature_valid or event is None:
+        _write_webhook_audit(
+            stripe_event_id="unknown",
+            event_type="unknown",
+            session_id=None,
+            signature_valid=False,
+            processing_ms=int((_time.monotonic() - started) * 1000),
+            response_status=400,
+            finalise_outcome="error",
+            error_message="signature_or_parse_failure",
+            stripe_created_at=None,
+        )
+        raise HTTPException(400, "Invalid signature")
 
     et = event["type"]
     obj = event["data"]["object"]
+    session_id = obj.get("id") if isinstance(obj, dict) else None
+    stripe_event_id = event.get("id", "unknown")
+    stripe_created_ts = event.get("created")
+    stripe_created_at = (
+        datetime.fromtimestamp(stripe_created_ts, tz=timezone.utc).isoformat()
+        if stripe_created_ts else None
+    )
+
     sb = _sb()
 
-    if et == "checkout.session.completed":
-        _finalise_paid_session(obj["id"], obj.get("payment_intent"))
-    elif et == "checkout.session.async_payment_succeeded":
-        _finalise_paid_session(obj["id"], obj.get("payment_intent"))
-    elif et == "checkout.session.async_payment_failed":
-        sb.table("payment_transactions").update({
-            "status": "failed",
-            "payment_status": "failed",
-            "updated_at": _now_iso(),
-        }).eq("session_id", obj["id"]).execute()
-        sb.table("booking_intents").update({"status": "failed", "updated_at": _now_iso()}).eq("session_id", obj["id"]).execute()
-        sb.table("date_slot_locks").delete().eq("session_id", obj["id"]).execute()
-    elif et == "checkout.session.expired":
-        sb.table("payment_transactions").update({
-            "status": "expired",
-            "payment_status": "expired",
-            "updated_at": _now_iso(),
-        }).eq("session_id", obj["id"]).execute()
-        sb.table("booking_intents").update({"status": "expired", "updated_at": _now_iso()}).eq("session_id", obj["id"]).execute()
-        sb.table("date_slot_locks").delete().eq("session_id", obj["id"]).execute()
+    outcome = "skipped_non_target_type"
+    error_message: Optional[str] = None
+    try:
+        if et == "checkout.session.completed":
+            res = _finalise_paid_session(obj["id"], obj.get("payment_intent"))
+            outcome = _classify_finalise_outcome(res)
+        elif et == "checkout.session.async_payment_succeeded":
+            res = _finalise_paid_session(obj["id"], obj.get("payment_intent"))
+            outcome = _classify_finalise_outcome(res)
+        elif et == "checkout.session.async_payment_failed":
+            sb.table("payment_transactions").update({
+                "status": "failed",
+                "payment_status": "failed",
+                "updated_at": _now_iso(),
+            }).eq("session_id", obj["id"]).execute()
+            sb.table("booking_intents").update({"status": "failed", "updated_at": _now_iso()}).eq("session_id", obj["id"]).execute()
+            sb.table("date_slot_locks").delete().eq("session_id", obj["id"]).execute()
+            outcome = "async_payment_failed"
+        elif et == "checkout.session.expired":
+            sb.table("payment_transactions").update({
+                "status": "expired",
+                "payment_status": "expired",
+                "updated_at": _now_iso(),
+            }).eq("session_id", obj["id"]).execute()
+            sb.table("booking_intents").update({"status": "expired", "updated_at": _now_iso()}).eq("session_id", obj["id"]).execute()
+            sb.table("date_slot_locks").delete().eq("session_id", obj["id"]).execute()
+            outcome = "expired"
+    except Exception as e:
+        error_message = f"{type(e).__name__}: {e}"
+        _write_webhook_audit(
+            stripe_event_id=stripe_event_id,
+            event_type=et,
+            session_id=session_id,
+            signature_valid=True,
+            processing_ms=int((_time.monotonic() - started) * 1000),
+            response_status=500,
+            finalise_outcome="error",
+            error_message=error_message[:500],
+            stripe_created_at=stripe_created_at,
+        )
+        raise
+
+    _write_webhook_audit(
+        stripe_event_id=stripe_event_id,
+        event_type=et,
+        session_id=session_id,
+        signature_valid=True,
+        processing_ms=int((_time.monotonic() - started) * 1000),
+        response_status=200,
+        finalise_outcome=outcome,
+        error_message=None,
+        stripe_created_at=stripe_created_at,
+    )
 
     return {"ok": True}
+
+
+def _classify_finalise_outcome(res: dict) -> str:
+    """Map _finalise_paid_session return dict to audit `finalise_outcome`."""
+    if not isinstance(res, dict):
+        return "unknown"
+    if res.get("finalised"):
+        return "finalised"
+    if res.get("refunded"):
+        return "refunded_race"
+    if res.get("skipped"):
+        return f"skipped_{res['skipped']}"
+    return "unknown"
+
+
+def _write_webhook_audit(
+    *,
+    stripe_event_id: str,
+    event_type: str,
+    session_id: Optional[str],
+    signature_valid: bool,
+    processing_ms: int,
+    response_status: int,
+    finalise_outcome: str,
+    error_message: Optional[str],
+    stripe_created_at: Optional[str],
+) -> None:
+    """Insert one row into public.webhook_deliveries_audit. Best-effort — an
+    audit failure MUST NOT roll back a successful finalisation."""
+    try:
+        _sb().table("webhook_deliveries_audit").upsert(
+            {
+                "stripe_event_id": stripe_event_id,
+                "event_type": event_type,
+                "session_id": session_id,
+                "pod_source": POD_SOURCE_LABEL,
+                "received_at": _now_iso(),
+                "signature_valid": signature_valid,
+                "processing_ms": processing_ms,
+                "response_status": response_status,
+                "finalise_outcome": finalise_outcome,
+                "error_message": error_message,
+                "stripe_created_at": stripe_created_at,
+            },
+            on_conflict="stripe_event_id,pod_source",
+        ).execute()
+    except Exception as e:
+        # Log but do not raise — audit is diagnostic, not on the critical path.
+        log.warning("webhook audit write failed for event %s on pod %s: %s",
+                    stripe_event_id, POD_SOURCE_LABEL, e)

@@ -1,0 +1,422 @@
+[
+  {
+    "id": "evt_1U6JSpEemFmdl6rEmmXmTmUB",
+    "object": "event",
+    "api_version": "2026-07-29.dahlia",
+    "created": 1787184251,
+    "data": {
+      "object": {
+        "id": "cs_test_a1abmmvUNKBxRi8GZl7j6JXU0rmt9WRALGNvjaMuE7yARqEw9e4AYEPEXE",
+        "object": "checkout.session",
+        "adaptive_pricing": {
+          "enabled": true
+        },
+        "after_expiration": null,
+        "allow_promotion_codes": null,
+        "amount_subtotal": 20000,
+        "amount_total": 20000,
+        "automatic_tax": {
+          "enabled": false,
+          "liability": null,
+          "provider": null,
+          "status": null
+        },
+        "billing_address_collection": null,
+        "branding_settings": {
+          "background_color": "#ffffff",
+          "border_style": "rounded",
+          "button_color": "#0074d4",
+          "display_name": "db-bridge-5",
+          "font_family": "default",
+          "icon": null,
+          "logo": null
+        },
+        "cancel_url": "https://flyboyvideography.com/book/cancel",
+        "client_reference_id": null,
+        "client_secret": null,
+        "collected_information": {
+          "business_name": null,
+          "individual_name": null,
+          "shipping_details": null
+        },
+        "consent": null,
+        "consent_collection": null,
+        "created": 1787182451,
+        "currency": "gbp",
+        "currency_conversion": null,
+        "custom_fields": [],
+        "custom_text": {
+          "after_submit": null,
+          "shipping_address": null,
+          "submit": null,
+          "terms_of_service_acceptance": null
+        },
+        "customer": null,
+        "customer_account": null,
+        "customer_creation": "if_required",
+        "customer_details": {
+          "address": null,
+          "business_name": null,
+          "email": "atk_railway_c_7fec7a_3@flyboytest.com",
+          "individual_name": null,
+          "name": null,
+          "phone": null,
+          "tax_exempt": "none",
+          "tax_ids": null
+        },
+        "customer_email": "atk_railway_c_7fec7a_3@flyboytest.com",
+        "discounts": [],
+        "expires_at": 1787184251,
+        "integration_identifier": null,
+        "invoice": null,
+        "invoice_creation": {
+          "enabled": false,
+          "invoice_data": {
+            "account_tax_ids": null,
+            "custom_fields": null,
+            "description": null,
+            "footer": null,
+            "issuer": null,
+            "metadata": {},
+            "rendering_options": null
+          }
+        },
+        "livemode": false,
+        "locale": null,
+        "managed_payments": {
+          "enabled": false
+        },
+        "metadata": {
+          "booking_intent_id": "b4219066-c81c-4520-aebc-79295a77ccca",
+          "event_date": "2029-12-04",
+          "package_id": "wedding",
+          "tier_name": "Classic"
+        },
+        "mode": "payment",
+        "origin_context": null,
+        "payment_intent": null,
+        "payment_link": null,
+        "payment_method_collection": "if_required",
+        "payment_method_configuration_details": null,
+        "payment_method_options": {
+          "card": {
+            "request_three_d_secure": "automatic"
+          }
+        },
+        "payment_method_types": [
+          "card"
+        ],
+        "payment_status": "unpaid",
+        "permissions": null,
+        "phone_number_collection": {
+          "enabled": false
+        },
+        "recovered_from": null,
+        "saved_payment_method_options": null,
+        "setup_intent": null,
+        "shipping_address_collection": null,
+        "shipping_cost": null,
+        "shipping_options": [],
+        "status": "expired",
+        "submit_type": null,
+        "subscription": null,
+        "success_url": "https://flyboyvideography.com/book/success?session_id={CHECKOUT_SESSION_ID}",
+        "total_details": {
+          "amount_discount": 0,
+          "amount_shipping": 0,
+          "amount_tax": 0
+        },
+        "ui_mode": "hosted_page",
+        "url": null,
+        "wallet_options": null
+      }
+    },
+    "livemode": false,
+    "pending_webhooks": 0,
+    "request": {
+      "id": null,
+      "idempotency_key": null
+    },
+    "type": "checkout.session.expired"
+  },
+  {
+    "id": "evt_1U6JSlEemFmdl6rE07Oeh5XH",
+    "object": "event",
+    "api_version": "2026-07-29.dahlia",
+    "created": 1787184247,
+    "data": {
+      "object": {
+        "id": "cs_test_a1BO4ArouniZrvjclABO9GHIcGhM0M5knHh9djbhNWa16JX3K1YSxQWbQa",
+        "object": "checkout.session",
+        "adaptive_pricing": {
+          "enabled": true
+        },
+        "after_expiration": null,
+        "allow_promotion_codes": null,
+        "amount_subtotal": 20000,
+        "amount_total": 20000,
+        "automatic_tax": {
+          "enabled": false,
+          "liability": null,
+          "provider": null,
+          "status": null
+        },
+        "billing_address_collection": null,
+        "branding_settings": {
+          "background_color": "#ffffff",
+          "border_style": "rounded",
+          "button_color": "#0074d4",
+          "display_name": "db-bridge-5",
+          "font_family": "default",
+          "icon": null,
+          "logo": null
+        },
+        "cancel_url": "https://flyboyvideography.com/book/cancel",
+        "client_reference_id": null,
+        "client_secret": null,
+        "collected_information": {
+          "business_name": null,
+          "individual_name": null,
+          "shipping_details": null
+        },
+        "consent": null,
+        "consent_collection": null,
+        "created": 1787182447,
+        "currency": "gbp",
+        "currency_conversion": null,
+        "custom_fields": [],
+        "custom_text": {
+          "after_submit": null,
+          "shipping_address": null,
+          "submit": null,
+          "terms_of_service_acceptance": null
+        },
+        "customer": null,
+        "customer_account": null,
+        "customer_creation": "if_required",
+        "customer_details": {
+          "address": null,
+          "business_name": null,
+          "email": "atk_railway_c_7fec7a_2@flyboytest.com",
+          "individual_name": null,
+          "name": null,
+          "phone": null,
+          "tax_exempt": "none",
+          "tax_ids": null
+        },
+        "customer_email": "atk_railway_c_7fec7a_2@flyboytest.com",
+        "discounts": [],
+        "expires_at": 1787184247,
+        "integration_identifier": null,
+        "invoice": null,
+        "invoice_creation": {
+          "enabled": false,
+          "invoice_data": {
+            "account_tax_ids": null,
+            "custom_fields": null,
+            "description": null,
+            "footer": null,
+            "issuer": null,
+            "metadata": {},
+            "rendering_options": null
+          }
+        },
+        "livemode": false,
+        "locale": null,
+        "managed_payments": {
+          "enabled": false
+        },
+        "metadata": {
+          "booking_intent_id": "a900a296-7d3c-4fb1-be6a-18a257d8903d",
+          "event_date": "2029-12-03",
+          "package_id": "wedding",
+          "tier_name": "Classic"
+        },
+        "mode": "payment",
+        "origin_context": null,
+        "payment_intent": null,
+        "payment_link": null,
+        "payment_method_collection": "if_required",
+        "payment_method_configuration_details": null,
+        "payment_method_options": {
+          "card": {
+            "request_three_d_secure": "automatic"
+          }
+        },
+        "payment_method_types": [
+          "card"
+        ],
+        "payment_status": "unpaid",
+        "permissions": null,
+        "phone_number_collection": {
+          "enabled": false
+        },
+        "recovered_from": null,
+        "saved_payment_method_options": null,
+        "setup_intent": null,
+        "shipping_address_collection": null,
+        "shipping_cost": null,
+        "shipping_options": [],
+        "status": "expired",
+        "submit_type": null,
+        "subscription": null,
+        "success_url": "https://flyboyvideography.com/book/success?session_id={CHECKOUT_SESSION_ID}",
+        "total_details": {
+          "amount_discount": 0,
+          "amount_shipping": 0,
+          "amount_tax": 0
+        },
+        "ui_mode": "hosted_page",
+        "url": null,
+        "wallet_options": null
+      }
+    },
+    "livemode": false,
+    "pending_webhooks": 0,
+    "request": {
+      "id": null,
+      "idempotency_key": null
+    },
+    "type": "checkout.session.expired"
+  },
+  {
+    "id": "evt_1U6JSiEemFmdl6rEIFwQbkJt",
+    "object": "event",
+    "api_version": "2026-07-29.dahlia",
+    "created": 1787184244,
+    "data": {
+      "object": {
+        "id": "cs_test_a1a1gTqNU310zdoQLK9B8ZvpLVaMwR4H8y7YZJLMZ3UYYhIilS8iZOFS8v",
+        "object": "checkout.session",
+        "adaptive_pricing": {
+          "enabled": true
+        },
+        "after_expiration": null,
+        "allow_promotion_codes": null,
+        "amount_subtotal": 20000,
+        "amount_total": 20000,
+        "automatic_tax": {
+          "enabled": false,
+          "liability": null,
+          "provider": null,
+          "status": null
+        },
+        "billing_address_collection": null,
+        "branding_settings": {
+          "background_color": "#ffffff",
+          "border_style": "rounded",
+          "button_color": "#0074d4",
+          "display_name": "db-bridge-5",
+          "font_family": "default",
+          "icon": null,
+          "logo": null
+        },
+        "cancel_url": "https://flyboyvideography.com/book/cancel",
+        "client_reference_id": null,
+        "client_secret": null,
+        "collected_information": {
+          "business_name": null,
+          "individual_name": null,
+          "shipping_details": null
+        },
+        "consent": null,
+        "consent_collection": null,
+        "created": 1787182444,
+        "currency": "gbp",
+        "currency_conversion": null,
+        "custom_fields": [],
+        "custom_text": {
+          "after_submit": null,
+          "shipping_address": null,
+          "submit": null,
+          "terms_of_service_acceptance": null
+        },
+        "customer": null,
+        "customer_account": null,
+        "customer_creation": "if_required",
+        "customer_details": {
+          "address": null,
+          "business_name": null,
+          "email": "atk_railway_c_7fec7a_1@flyboytest.com",
+          "individual_name": null,
+          "name": null,
+          "phone": null,
+          "tax_exempt": "none",
+          "tax_ids": null
+        },
+        "customer_email": "atk_railway_c_7fec7a_1@flyboytest.com",
+        "discounts": [],
+        "expires_at": 1787184244,
+        "integration_identifier": null,
+        "invoice": null,
+        "invoice_creation": {
+          "enabled": false,
+          "invoice_data": {
+            "account_tax_ids": null,
+            "custom_fields": null,
+            "description": null,
+            "footer": null,
+            "issuer": null,
+            "metadata": {},
+            "rendering_options": null
+          }
+        },
+        "livemode": false,
+        "locale": null,
+        "managed_payments": {
+          "enabled": false
+        },
+        "metadata": {
+          "booking_intent_id": "578e5907-1612-4fa0-b7b0-a02f779def25",
+          "event_date": "2029-12-02",
+          "package_id": "wedding",
+          "tier_name": "Classic"
+        },
+        "mode": "payment",
+        "origin_context": null,
+        "payment_intent": null,
+        "payment_link": null,
+        "payment_method_collection": "if_required",
+        "payment_method_configuration_details": null,
+        "payment_method_options": {
+          "card": {
+            "request_three_d_secure": "automatic"
+          }
+        },
+        "payment_method_types": [
+          "card"
+        ],
+        "payment_status": "unpaid",
+        "permissions": null,
+        "phone_number_collection": {
+          "enabled": false
+        },
+        "recovered_from": null,
+        "saved_payment_method_options": null,
+        "setup_intent": null,
+        "shipping_address_collection": null,
+        "shipping_cost": null,
+        "shipping_options": [],
+        "status": "expired",
+        "submit_type": null,
+        "subscription": null,
+        "success_url": "https://flyboyvideography.com/book/success?session_id={CHECKOUT_SESSION_ID}",
+        "total_details": {
+          "amount_discount": 0,
+          "amount_shipping": 0,
+          "amount_tax": 0
+        },
+        "ui_mode": "hosted_page",
+        "url": null,
+        "wallet_options": null
+      }
+    },
+    "livemode": false,
+    "pending_webhooks": 0,
+    "request": {
+      "id": null,
+      "idempotency_key": null
+    },
+    "type": "checkout.session.expired"
+  }
+]
