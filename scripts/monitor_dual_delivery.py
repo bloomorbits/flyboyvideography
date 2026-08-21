@@ -104,14 +104,68 @@ for pod, entries in sorted(by_pod.items()):
     for e in entries:
         outcomes[e.get("finalise_outcome") or "n/a"] += 1
 
+    # Break out processing_ms by path — finalisation is the "expensive"
+    # path (booking insert, email, auth-link) and is what actually matters
+    # for latency. Skips/replays touch far fewer queries.
+    proc_by_path = defaultdict(list)
+    lat_by_path = defaultdict(list)
+    for e in entries:
+        outcome = e.get("finalise_outcome") or "n/a"
+        if outcome == "finalised":
+            path = "finalised"
+        elif outcome.startswith("skipped_"):
+            path = "skip_or_replay"
+        elif outcome in ("refunded_race",):
+            path = outcome
+        elif outcome in ("expired", "async_payment_failed"):
+            path = outcome
+        elif outcome == "error":
+            path = "error"
+        else:
+            path = "other"
+        if e.get("processing_ms") is not None:
+            proc_by_path[path].append(e["processing_ms"])
+        l = latency(e)
+        if l is not None:
+            lat_by_path[path].append(l)
+
     print(f"\n  pod_source = {pod!r}")
     print(f"    deliveries_total : {total}")
     print(f"    2xx / errors     : {ok} / {err}")
-    print(f"    processing_ms    : avg={int(mean(proc_times)) if proc_times else '?':>4}  p95={p(proc_times, 0.95) if proc_times else '?'}")
-    print(f"    latency_ms       : avg={int(mean(latencies)) if latencies else '?':>4}  p95={p(latencies, 0.95) if latencies else '?'}   (received_at - stripe_created_at)")
+    print(f"    processing_ms    : avg={int(mean(proc_times)) if proc_times else '?':>4}  p95={p(proc_times, 0.95) if proc_times else '?'}  (all paths mixed)")
+    print(f"    latency_ms       : avg={int(mean(latencies)) if latencies else '?':>4}  p95={p(latencies, 0.95) if latencies else '?'}  (received_at - stripe_created_at)")
     print(f"    event_type_dist  : {dict(types)}")
     print(f"    outcome_dist     : {dict(outcomes)}")
-    pod_summary[pod] = {"total": total, "ok": ok, "err": err}
+
+    # Per-path breakdown — critical for spotting real regressions on the
+    # finalisation path vs noise from cheap skip paths.
+    if proc_by_path:
+        print(f"    processing_ms BY PATH:")
+        for path in sorted(proc_by_path):
+            xs = proc_by_path[path]
+            xs_lat = lat_by_path.get(path, [])
+            proc_str = f"n={len(xs):<3} avg={int(mean(xs)):<5} p50={p(xs, 0.50)} p95={p(xs, 0.95)} max={max(xs)}"
+            lat_str = (
+                f"  latency: avg={int(mean(xs_lat))} p95={p(xs_lat, 0.95)}"
+                if xs_lat else ""
+            )
+            print(f"      {path:22s} {proc_str}{lat_str}")
+    pod_summary[pod] = {
+        "total": total,
+        "ok": ok,
+        "err": err,
+        "processing_ms_finalised": {
+            "n": len(proc_by_path.get("finalised", [])),
+            "avg": int(mean(proc_by_path["finalised"])) if proc_by_path.get("finalised") else None,
+            "p95": p(proc_by_path.get("finalised", []), 0.95),
+            "max": max(proc_by_path["finalised"]) if proc_by_path.get("finalised") else None,
+        },
+        "latency_ms_finalised": {
+            "n": len(lat_by_path.get("finalised", [])),
+            "avg": int(mean(lat_by_path["finalised"])) if lat_by_path.get("finalised") else None,
+            "p95": p(lat_by_path.get("finalised", []), 0.95),
+        },
+    }
 
 # Cross-pod attribution
 print()
