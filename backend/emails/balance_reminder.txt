@@ -1,0 +1,23 @@
+FRIENDLY REMINDER
+
+Quick nudge, {{first_name}} — your balance is due in a couple of days.
+
+No stress — just a heads-up. Your {{package_title}}{{tier_suffix}} balance for
+{{event_date}} is due by {{due_on}}, and we haven't seen it come through yet.
+Chances are it's already on your list; if not, the link below will settle it
+in under a minute.
+
+PAYMENT SUMMARY
+  Package total : {{package_total}}
+  Deposit paid  : {{deposit_paid}}
+  Balance due   : {{balance_due}}  (due by {{due_on}})
+
+Settle balance: {{checkout_url}}
+
+Already paid in the last day or two? Ignore this — the reminder was queued
+before your payment cleared. If you're stuck on anything, hit reply.
+
+--
+Flyboy Videography · hello@flyboyvideography.com · https://flyboyvideography.com
+Built by Bloomorbit Studio — https://bloomorbit.tech
+Privacy: https://flyboyvideography.com/privacy · Terms: https://flyboyvideography.com/terms

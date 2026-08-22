@@ -509,3 +509,120 @@ Order preserved from session 9, with `SEC-001`, `PL-INFRA-1`, `PL-INFRA-2` all s
    - Retainer signup, Welcome tour, per backlog
 9. If Step 13 surfaces bugs in consent OR payment chain, freeze remains — fix bug, don't detour to P1. Consent has mutation-tested pytests but has NOT survived a real Stripe round-trip yet.
 10. Portal admin login unchanged — see `/app/memory/test_credentials.md`.
+
+
+## Implemented (Feb 2026) — session 15 (Automated Balance Collection, Phases 1-6)
+
+Goal: automate the balance-collection cycle end-to-end so a booking 10 days
+out gets a balance invoice + Stripe Checkout link emailed automatically, and
+gets a single gentle reminder if it's still unpaid inside 2 days of due_on.
+Zero double-billing, no new webhooks, no ambiguity about "who fired what."
+
+### What shipped
+
+| Phase | Deliverable | Test coverage |
+|---|---|---|
+| 1 | `supabase_migration_012_balance_invoicing.sql` — adds `payment_purpose`, `reminder_sent_at`, partial unique index `invoices_one_balance_per_booking_uniq` | `backend/tests/introspect_012.py` — PASS, duplicate insert raises `23505` |
+| 2 | `_finalise_paid_session` branches on `metadata.payment_purpose`; new `_finalise_balance_payment` does invoice→paid + tx→paid idempotently | `backend/tests/test_balance_finalise.py` — 9/9 PASS (first-call flip, no-op replay, 100× replay stress, 2 self-heal paths, missing-invoice_id refusal, wrong-purpose refusal, deposit-metadata-doesn't-touch-balance, invoice-not-found refusal) |
+| 3 | `_create_balance_checkout_session()` helper + `GET /api/booking/pay-balance/{invoice_id}` public 302-to-Stripe endpoint. Metadata carries `payment_purpose`, `invoice_id`, `booking_id`, `client_email`. No `api_version` pin | Covered end-to-end by Phase 2 + 4 tests |
+| 4 | `POST /api/admin/jobs/run-daily-invoicing` in `backend/daily_invoicing.py`. Auth via NEW `CRON_JOB_JWT_SECRET` + `aud=flyboy:cron:daily-invoicing` + `scope=cron:invoicing`. Balance formula = `bookings.budget − Σ(paid payment_transactions on this booking, incl. balance-paid invoices)` | `backend/tests/test_daily_invoicing.py` — 12/12 PASS |
+| 5 | Reminder branch in same endpoint. Filters: `status='sent' AND due_on ≤ today+2 AND reminder_sent_at IS NULL`. Recomputes remaining balance; if ≤ 0, marks invoice paid + latches `reminder_sent_at` (no email); else sends reminder + latches | Covered by same 12-test suite — inc. explicit "reminder does NOT fire when balance settled outside Stripe checkout" |
+| 6 | `docs/BALANCE_INVOICING_RUNBOOK.md` — Railway Cron wire-up, JWT-mint snippet, health-signal table, rollback plan | Manual deployment |
+
+Email templates (approved copy, matching booking_confirmation voice + Bloomorbit credit):
+- `backend/emails/balance_invoice.{html,txt}`
+- `backend/emails/balance_reminder.{html,txt}`
+
+Config added to `backend/.env`: `CRON_JOB_JWT_SECRET` (64-byte urlsafe). Same
+key MUST be minted fresh on Railway before deploying the cron.
+
+Defense-in-depth guards:
+- DB physical: partial unique index on `invoices(booking_id) WHERE payment_purpose='balance'`
+- Webhook: idempotency guard on `invoice.status='paid'` + tx `payment_status='paid'`
+- Webhook: refuses if metadata says `balance` but invoice `payment_purpose ≠ 'balance'`
+- Endpoint: refuses if `payment_purpose ≠ 'balance'` or `status NOT IN ('sent','overdue')`
+- Cron: JWT `aud` + `scope` claims, dedicated secret separate from admin/session
+
+### Files touched / created
+
+- Modified: `backend/booking.py` (balance branch + helper + `/api/booking/pay-balance/{invoice_id}`)
+- Modified: `backend/server.py` (mount `daily_invoicing_router`)
+- Modified: `backend/tests/introspect_012.py` (removed stale `meta`/`currency` columns)
+- Modified: `backend/.env` (`CRON_JOB_JWT_SECRET`)
+- Modified: `memory/PRD.md`, `memory/test_credentials.md`
+- New: `backend/daily_invoicing.py`
+- New: `backend/emails/balance_invoice.{html,txt}`, `backend/emails/balance_reminder.{html,txt}`
+- New: `backend/tests/test_balance_finalise.py`, `backend/tests/test_daily_invoicing.py`
+- New: `docs/BALANCE_INVOICING_RUNBOOK.md`
+
+### Dual-delivery observation status (Step 14 — still queued)
+
+24h monitor at session start: `seen_by_both=1, railway_only=0, preview_only=0`.
+Sample is thin (1 completed event); Nathan opted to keep Step 14 queued.
+Rerun `python scripts/monitor_dual_delivery.py --hours 48` to widen window
+before retiring the preview endpoint.
+
+### Backlog after session 15
+
+Order preserved. Balance-collection ships freezes lifted:
+
+1. **P0** — Step 14 retirement (waiting on wider observation window; runbook now documents 48h/72h checkpoints + controlled-booking fallback)
+2. ~~**P1** — Magic-link recovery UI fix~~ **✅ SHIPPED** — see below
+3. **P1** — Admin-editable pricing (Migration 013+)
+4. **P1** — Calendar / reminder consolidation (Nathan's locked sequence: pricing → calendar/reminder → dashboard → Bunny.net → live chat)
+5. **P1** — Unified admin dashboard (Enquiry Inbox lives HERE, not standalone)
+6. **P1** — Bunny.net integration
+7. **P1** — Live chat
+8. **P2** — Retainer signup via Stripe Subscriptions, Welcome tour, V2 booking day-blocking, Deliverable 90-day expiration
+
+### Magic-link recovery UI fix (session 15, post balance-collection)
+
+Root cause: two independent races combined to redirect users off `/auth`
+before recovery mode could activate:
+  1. Supabase parses the `#access_token=…&type=recovery` fragment on script
+     boot and creates a session BEFORE React commits — so `session` is
+     truthy on the very first render.
+  2. `detectSessionInUrl: true` (Supabase default) then STRIPS the fragment
+     from the URL, so a `useEffect` reading `window.location.hash` a tick
+     later sees an empty string.
+  3. With mode still `"login"` on first render + session truthy, the
+     `<Navigate to="/" />` guard fired before mode could ever flip.
+
+Fix in `frontend/src/pages/AuthPage.js`:
+  - Move the hash detection into a `useState` lazy initializer so it runs
+    DURING first render, before the redirect guard evaluates.
+  - Keep a `supabase.auth.onAuthStateChange(PASSWORD_RECOVERY)` listener as
+    a belt-and-braces fallback for edge cases (browser extensions,
+    hash-router double-parse) where the fragment is already consumed.
+
+Verified in preview:
+  - `/auth#access_token=…&type=recovery` → headline `Set a new password`,
+    password input visible, email input hidden, submit label
+    `Save new password`.
+  - `/auth` (no fragment) → headline `Sign in`, email + forgot-password
+    link, mode toggle visible. No regression on normal login flow.
+
+### Preflight verifier for Balance Cron deploy
+
+New: `scripts/preflight_balance_cron.py`. Run from any machine with
+`SELF_URL` + `CRON_JOB_JWT_SECRET` in env; performs 7 safe read-only /
+dry-run checks against a target backend:
+  - `/api/health` returns 200
+  - `/api/admin/jobs/run-daily-invoicing` refuses no-token / wrong-secret /
+    wrong-audience (401) / wrong-scope (403)
+  - Valid token → 200 + well-formed dry-run summary
+  - `/api/booking/pay-balance/<uuid>` returns 404 (proves route mounted)
+  - Exit code 0 = safe to add the Railway Cron schedule.
+
+Verified 7/7 PASS against the preview backend in session 15.
+
+### Deploy checklist for balance collection
+
+1. Apply Migration 012 in Supabase (✅ done in this session)
+2. Push code to `main` → Railway auto-deploy
+3. Set `CRON_JOB_JWT_SECRET` in Railway env (fresh secret; not the same as local pytest secret)
+4. Set `PUBLIC_API_BASE` in Railway env (= Railway backend URL)
+5. Set `SELF_URL` in Railway env (= same, used by cron command)
+6. Manual dry-run POST via curl (see runbook) → expect JSON summary with `dry_run=true`
+7. Add Railway Cron schedule: daily 08:00 UTC, command from runbook
+8. Watch first live run in Railway logs

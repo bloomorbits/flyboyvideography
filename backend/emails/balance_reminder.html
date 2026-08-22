@@ -1,0 +1,68 @@
+<!--
+  Balance-reminder email — sent by the daily-invoicing job when a balance
+  invoice's due_on is <= today+2 AND reminder_sent_at IS NULL AND status='sent'
+  AND the recomputed remaining balance is > 0.
+
+  Softer/gentler framing given the due date is close. Placeholders match the
+  invoice template.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8" /><title>Friendly reminder — Flyboy Videography</title></head>
+<body style="margin:0;padding:0;background:#faf8f4;font-family:Inter,Arial,sans-serif;color:#17140f;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center" style="padding:32px 20px;">
+<table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;">
+  <tr><td style="padding:0 0 24px 0;">
+    <p style="margin:0;font-family:'Space Grotesk',Arial,sans-serif;font-size:18px;font-weight:700;letter-spacing:0.02em;">
+      FLYBOY<span style="opacity:0.4;">/</span>VIDEOGRAPHY
+    </p>
+  </td></tr>
+
+  <tr><td style="background:#ffffff;border:1px solid #e9e1d2;border-radius:12px;padding:36px 32px;">
+    <p style="margin:0 0 6px 0;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.3em;text-transform:uppercase;color:#6b6558;">
+      Friendly reminder
+    </p>
+    <h1 style="margin:0 0 20px 0;font-family:'Space Grotesk',Arial,sans-serif;font-size:26px;line-height:1.25;font-weight:700;">
+      Quick nudge, {{first_name}} — your balance is due in a couple of days.
+    </h1>
+    <p style="margin:0 0 20px 0;font-size:15px;line-height:1.55;">
+      No stress — just a heads-up. Your <strong>{{package_title}}{{tier_suffix}}</strong> balance for <strong>{{event_date}}</strong> is due by <strong>{{due_on}}</strong>, and we haven't seen it come through yet. Chances are it's already on your list; if not, the link below will settle it in under a minute.
+    </p>
+
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0;background:#faf8f4;border:1px solid #e9e1d2;border-radius:8px;">
+      <tr><td style="padding:18px 20px;">
+        <p style="margin:0 0 6px 0;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.25em;text-transform:uppercase;color:#6b6558;">Payment summary</p>
+        <p style="margin:0 0 4px 0;font-size:14px;">Package total: <strong>{{package_total}}</strong></p>
+        <p style="margin:0 0 4px 0;font-size:14px;">Deposit paid: <strong>{{deposit_paid}}</strong></p>
+        <p style="margin:0;font-size:14px;">Balance due: <strong>{{balance_due}}</strong> · due by <strong>{{due_on}}</strong></p>
+      </td></tr>
+    </table>
+
+    <p style="margin:0 0 10px 0;">
+      <a href="{{checkout_url}}" style="display:inline-block;background:#17140f;color:#faf8f4;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:600;font-size:14px;">
+        Settle balance →
+      </a>
+    </p>
+    <p style="margin:0 0 26px 0;font-size:12px;line-height:1.55;color:#6b6558;">
+      Already paid in the last day or two? Ignore this — the reminder was queued before your payment cleared. If you're stuck on anything, hit reply.
+    </p>
+  </td></tr>
+
+  <tr><td style="padding:24px 4px 8px 4px;font-size:12px;color:#6b6558;">
+    <p style="margin:0 0 6px 0;"><strong style="color:#17140f;">Flyboy Videography</strong></p>
+    <p style="margin:0 0 4px 0;">
+      <a href="mailto:hello@flyboyvideography.com" style="color:#6b6558;text-decoration:underline;">hello@flyboyvideography.com</a> ·
+      <a href="https://flyboyvideography.com" style="color:#6b6558;text-decoration:underline;">flyboyvideography.com</a>
+    </p>
+    <p style="margin:12px 0 4px 0;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.05em;text-transform:uppercase;">
+      Built by <a href="https://bloomorbit.tech" style="color:#17140f;text-decoration:underline;text-decoration-style:dotted;">Bloomorbit Studio</a>
+    </p>
+    <p style="margin:8px 0 0 0;font-size:11px;color:#8a8478;">
+      <a href="https://flyboyvideography.com/privacy" style="color:#8a8478;text-decoration:underline;">Privacy</a> ·
+      <a href="https://flyboyvideography.com/terms" style="color:#8a8478;text-decoration:underline;">Terms</a>
+    </p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>

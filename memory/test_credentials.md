@@ -49,3 +49,38 @@ Supabase project: https://pnqqmzszasvfnvnnonvd.supabase.co (auth + Postgres; NO 
   `tests/sim_calendar_freeze_attack.py` both purge the ledger for these
   patterns before/after they run. Any human ad-hoc probe should use one
   of these domains so it gets swept up by the same fixtures.
+
+
+## Cron job authentication (session 15 — automated balance collection)
+
+- `CRON_JOB_JWT_SECRET` is set in `backend/.env` (64-byte urlsafe). Used ONLY
+  by `POST /api/admin/jobs/run-daily-invoicing`.
+- Deliberately separate from admin/session tokens — narrow blast radius.
+- Token requirements (all enforced by `_require_cron_token`):
+  - `algorithm=HS256`
+  - `aud=flyboy:cron:daily-invoicing`
+  - `scope=cron:invoicing`
+  - `exp` in the future (recommended: 5 min from issue)
+- Mint locally:
+  ```python
+  import jwt, os, time
+  now = int(time.time())
+  print(jwt.encode({
+      "aud": "flyboy:cron:daily-invoicing",
+      "scope": "cron:invoicing",
+      "iat": now, "exp": now + 300,
+  }, os.environ["CRON_JOB_JWT_SECRET"], algorithm="HS256"))
+  ```
+- Production: mint a **fresh** secret on Railway; do NOT reuse the local
+  pytest secret. Deploy runbook: `/app/docs/BALANCE_INVOICING_RUNBOOK.md`.
+- Test flows for the endpoint live in `backend/tests/test_daily_invoicing.py`
+  (guarded by `ALLOW_ATTACK_SIM=1`).
+
+## Balance-payment test fixtures (session 15)
+
+- `backend/tests/test_balance_finalise.py` creates one balance invoice per
+  test attached to any existing booking, cleans up on teardown.
+- `backend/tests/test_daily_invoicing.py` creates its own dedicated
+  auth-user + client + booking + booking_intent + deposit-tx per module,
+  fully cleaned up at end.
+- Email domain convention: `@flyboytest.com` — same as existing tests.

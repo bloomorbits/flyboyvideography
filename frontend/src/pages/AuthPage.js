@@ -14,18 +14,39 @@ const HERO = "https://images.unsplash.com/photo-1597848808461-5db1405e1db1?q=80&
 //   "recovery"  — user arrived here from a reset / invite link, set a new password
 export default function AuthPage() {
   const { session, loadProfile } = useAuth();
-  const [mode, setMode] = useState("login");
+  // Detect Supabase recovery flow SYNCHRONOUSLY on first render.
+  //
+  // Why the initializer, not a useEffect? Two independent races combined to
+  // strand new clients on the dashboard with no password set:
+  //   1. Supabase parses `#access_token=…&type=recovery` on script boot and
+  //      creates a session BEFORE React commits — so `session` is truthy on
+  //      the very first render.
+  //   2. `detectSessionInUrl: true` (Supabase default) then STRIPS the hash
+  //      from the URL, so a `useEffect` that reads `window.location.hash`
+  //      one tick later sees an empty string.
+  //   3. With mode still "login" on first render + session truthy, the
+  //      guard on line ~40 redirected to "/" before mode could ever flip.
+  // The lazy initializer runs during the first render, still within the
+  // same tick as Supabase's boot handler — early enough to catch the hash
+  // before Supabase clears it.
+  const [mode, setMode] = useState(() => {
+    if (typeof window === "undefined") return "login";
+    const hash = window.location.hash || "";
+    if (hash.includes("type=recovery") || hash.includes("type=invite")) return "recovery";
+    return "login";
+  });
   const [form, setForm] = useState({ email: "", password: "", full_name: "", company: "" });
   const [busy, setBusy] = useState(false);
 
-  // Detect Supabase recovery flow — the reset/invite email lands here with a
-  // hash fragment carrying an `access_token` and `type=recovery`. When we see
-  // that, switch to the "recovery" mode so the user can set a fresh password.
+  // Belt-and-braces: Supabase emits a PASSWORD_RECOVERY auth event when it
+  // processes a recovery link. If the URL hash was somehow already cleared
+  // by the time our initializer ran (e.g. hash-router double-parse, browser
+  // extension), this listener still flips us into recovery mode.
   useEffect(() => {
-    const hash = typeof window !== "undefined" ? window.location.hash : "";
-    if (hash.includes("type=recovery") || hash.includes("type=invite")) {
-      setMode("recovery");
-    }
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") setMode("recovery");
+    });
+    return () => sub?.subscription?.unsubscribe();
   }, []);
 
   if (session && mode !== "recovery") return <Navigate to="/" replace />;
