@@ -91,14 +91,14 @@ Notes:
    this is the URL that appears inside customer emails and 302-redirects
    to Stripe).
 4. Set `SELF_URL` in Railway env (only used by the cron command).
-5. Manually POST once via curl to prove the endpoint is live:
+5. **Run the preflight verifier from your laptop** (safe — read-only + dry-run only):
    ```bash
-   TOKEN=$(python -c "import jwt,time,os; now=int(time.time()); print(jwt.encode({'aud':'flyboy:cron:daily-invoicing','scope':'cron:invoicing','iat':now,'exp':now+300}, os.environ['CRON_JOB_JWT_SECRET'], 'HS256'))")
-   curl -sS -X POST "$SELF_URL/api/admin/jobs/run-daily-invoicing?dry_run=1" \
-     -H "Authorization: Bearer $TOKEN" | jq .
+   export SELF_URL="https://<your-railway-domain>"
+   export CRON_JOB_JWT_SECRET="<the secret you set on Railway>"
+   python scripts/preflight_balance_cron.py
    ```
-   Expect a JSON summary with `dry_run=true` and empty lists on first run.
-6. Add the Railway Cron schedule using the command above.
+   All 7 checks must PASS before adding the cron schedule. Exit code 0 = green.
+6. Add the Railway Cron schedule using the command below.
 7. Wait for the first scheduled run — check Railway logs for the summary
    JSON output.
 
@@ -125,3 +125,25 @@ The migration is additive-only. If the balance flow needs to be paused:
    (existing client-side booking flow untouched).
 2. **Full rollback:** revert the code changes. The DB columns and index
    remain but have zero effect without the code that writes to them.
+
+## Preview-webhook retirement (Step 14) — observation plan
+
+Decision from session 15: do NOT retire on a single data point. Extend the
+observation window and, if organic traffic stays thin, generate a small
+number of controlled test bookings to fatten the sample.
+
+Schedule:
+- **T+24h** (session 15 baseline): `seen_by_both=1, railway_only=0, preview_only=0`. Healthy but statistically thin.
+- **T+48h:** re-run `python scripts/monitor_dual_delivery.py --hours 48`.
+  Look for: `seen_by_both ≥ 3`, `preview_only == 0`.
+- **T+72h:** re-run `python scripts/monitor_dual_delivery.py --hours 72`.
+  Look for: `seen_by_both ≥ 5`, `preview_only == 0`.
+- **If sample still thin (< 3 events) at T+72h:** generate 2-3 controlled
+  test bookings (real Stripe test-mode payments, real webhook fires) using
+  the standard `@flyboytest.com` domain convention, then re-run the monitor
+  with a fresh `--hours 24` window narrowly scoped to the test window. Any
+  `preview_only > 0` blocks retirement.
+- **Retirement gate**: `seen_by_both ≥ 5 AND preview_only == 0` on any run.
+
+Only when the gate passes: execute `docs/STEP_14_PREVIEW_RETIREMENT.md`.
+

@@ -566,15 +566,55 @@ before retiring the preview endpoint.
 
 Order preserved. Balance-collection ships freezes lifted:
 
-1. **P0** — Step 14 retirement (waiting on wider observation window)
-2. **P1** — Magic-link recovery UI fix in `frontend/src/pages/AuthPage.js`
-3. **P1** — Complete remaining SEO landing pages (skip Corporate)
-4. **P1** — Admin-editable pricing (Migration 013)
-5. **P1** — Enquiry Inbox (admin view of `contact_enquiries`) + auto-reply email
-6. **P1** — Retainer signup via Stripe Subscriptions
-7. **P2** — Welcome tour first-login flow
-8. **P2** — Package-dependent day-blocking (V2 Booking)
-9. **P2** — Deliverable 90-day expiration + warning email
+1. **P0** — Step 14 retirement (waiting on wider observation window; runbook now documents 48h/72h checkpoints + controlled-booking fallback)
+2. ~~**P1** — Magic-link recovery UI fix~~ **✅ SHIPPED** — see below
+3. **P1** — Admin-editable pricing (Migration 013+)
+4. **P1** — Calendar / reminder consolidation (Nathan's locked sequence: pricing → calendar/reminder → dashboard → Bunny.net → live chat)
+5. **P1** — Unified admin dashboard (Enquiry Inbox lives HERE, not standalone)
+6. **P1** — Bunny.net integration
+7. **P1** — Live chat
+8. **P2** — Retainer signup via Stripe Subscriptions, Welcome tour, V2 booking day-blocking, Deliverable 90-day expiration
+
+### Magic-link recovery UI fix (session 15, post balance-collection)
+
+Root cause: two independent races combined to redirect users off `/auth`
+before recovery mode could activate:
+  1. Supabase parses the `#access_token=…&type=recovery` fragment on script
+     boot and creates a session BEFORE React commits — so `session` is
+     truthy on the very first render.
+  2. `detectSessionInUrl: true` (Supabase default) then STRIPS the fragment
+     from the URL, so a `useEffect` reading `window.location.hash` a tick
+     later sees an empty string.
+  3. With mode still `"login"` on first render + session truthy, the
+     `<Navigate to="/" />` guard fired before mode could ever flip.
+
+Fix in `frontend/src/pages/AuthPage.js`:
+  - Move the hash detection into a `useState` lazy initializer so it runs
+    DURING first render, before the redirect guard evaluates.
+  - Keep a `supabase.auth.onAuthStateChange(PASSWORD_RECOVERY)` listener as
+    a belt-and-braces fallback for edge cases (browser extensions,
+    hash-router double-parse) where the fragment is already consumed.
+
+Verified in preview:
+  - `/auth#access_token=…&type=recovery` → headline `Set a new password`,
+    password input visible, email input hidden, submit label
+    `Save new password`.
+  - `/auth` (no fragment) → headline `Sign in`, email + forgot-password
+    link, mode toggle visible. No regression on normal login flow.
+
+### Preflight verifier for Balance Cron deploy
+
+New: `scripts/preflight_balance_cron.py`. Run from any machine with
+`SELF_URL` + `CRON_JOB_JWT_SECRET` in env; performs 7 safe read-only /
+dry-run checks against a target backend:
+  - `/api/health` returns 200
+  - `/api/admin/jobs/run-daily-invoicing` refuses no-token / wrong-secret /
+    wrong-audience (401) / wrong-scope (403)
+  - Valid token → 200 + well-formed dry-run summary
+  - `/api/booking/pay-balance/<uuid>` returns 404 (proves route mounted)
+  - Exit code 0 = safe to add the Railway Cron schedule.
+
+Verified 7/7 PASS against the preview backend in session 15.
 
 ### Deploy checklist for balance collection
 
