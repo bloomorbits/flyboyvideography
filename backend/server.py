@@ -99,6 +99,10 @@ app.include_router(contact_router)
 from daily_invoicing import router as daily_invoicing_router  # noqa: E402
 app.include_router(daily_invoicing_router)
 
+# Admin-editable pricing catalog — see pricing.py (Migration 013)
+from pricing import router as pricing_router  # noqa: E402
+app.include_router(pricing_router)
+
 bearer = HTTPBearer(auto_error=False)
 
 SCHEMA_HINT = "Supabase tables not found. Run /app/supabase_schema.sql in your Supabase SQL Editor."

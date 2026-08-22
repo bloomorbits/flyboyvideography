@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { packages, graduation, extras, bookingTerms } from "../../lib/pricing";
+import { packages as fallbackPackages, graduation as fallbackGraduation, extras as fallbackExtras, bookingTerms as fallbackBookingTerms } from "../../lib/pricing";
 import HeroPlayer from "../components/HeroPlayer";
 import Marquee from "../components/Marquee";
 import Reveal from "../components/Reveal";
@@ -10,6 +10,54 @@ export const metadata = {
   description:
     "Wedding videography from £250, birthday films, naming ceremony & gender reveal coverage, lifestyle shoots and graduation reels. Transparent GBP pricing, 50% deposit secures your date.",
 };
+
+// Refresh the cached HTML at most every 60s. Publishing new pricing via
+// the admin panel will show up within that window — a good tradeoff
+// between "near-instant" and "don't hammer the backend on every request."
+export const revalidate = 60;
+
+// Backend URL for the pricing fetch. Missing = we hit the fallback path.
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "";
+
+async function fetchCatalog() {
+  // Guardrail: if the backend is unreachable OR the API is missing on the
+  // very first deploy, we serve the last-known-good `pricing.js` constants
+  // and log the failure. The site NEVER shows a "pricing missing" error.
+  if (!API_BASE) {
+    return {
+      packages: fallbackPackages,
+      graduation: fallbackGraduation,
+      extras: fallbackExtras,
+      bookingTerms: fallbackBookingTerms,
+    };
+  }
+  try {
+    const res = await fetch(`${API_BASE}/api/pricing`, {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) throw new Error(`pricing HTTP ${res.status}`);
+    const body = await res.json();
+    const c = body?.content;
+    if (!c || !Array.isArray(c.packages) || !c.graduation || !c.extras) {
+      throw new Error("pricing content shape invalid");
+    }
+    return {
+      packages: c.packages,
+      graduation: c.graduation,
+      extras: c.extras,
+      bookingTerms: c.bookingTerms || fallbackBookingTerms,
+    };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[services] pricing fetch failed — using pricing.js fallback:", err?.message || err);
+    return {
+      packages: fallbackPackages,
+      graduation: fallbackGraduation,
+      extras: fallbackExtras,
+      bookingTerms: fallbackBookingTerms,
+    };
+  }
+}
 
 const gbp = (n) => `£${n}`;
 const CATEGORIES = ["Weddings", "Birthdays", "Naming Ceremonies", "Gender Reveals", "Lifestyle", "Graduations", "Extra Reels"];
@@ -71,7 +119,9 @@ function SectionBackdrop() {
   );
 }
 
-export default function ServicesPage() {
+export default async function ServicesPage() {
+  const { packages, graduation, extras, bookingTerms } = await fetchCatalog();
+
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Service",
