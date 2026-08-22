@@ -1,4 +1,0 @@
-# Portal (app.flyboyvideography.com) is authenticated by design.
-# Nothing here should ever appear in a public index. Block all crawlers.
-User-agent: *
-Disallow: /
