@@ -1,0 +1,21 @@
+BALANCE INVOICE
+
+One last thing before the day, {{first_name}}.
+
+Your {{package_title}}{{tier_suffix}} is booked for {{event_date}}. The balance
+is now due — settle it in a couple of taps and we're all set for the day.
+
+PAYMENT SUMMARY
+  Package total : {{package_total}}
+  Deposit paid  : {{deposit_paid}}
+  Balance due   : {{balance_due}}  (due by {{due_on}})
+
+Pay balance now: {{checkout_url}}
+
+Card details never touch us — payment runs through Stripe, same as your deposit.
+Any questions on the invoice, just reply to this email.
+
+--
+Flyboy Videography · hello@flyboyvideography.com · https://flyboyvideography.com
+Built by Bloomorbit Studio — https://bloomorbit.tech
+Privacy: https://flyboyvideography.com/privacy · Terms: https://flyboyvideography.com/terms

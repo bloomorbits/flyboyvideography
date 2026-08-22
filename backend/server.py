@@ -95,6 +95,10 @@ app.include_router(booking_router)
 from contact import router as contact_router  # noqa: E402
 app.include_router(contact_router)
 
+# Daily balance-invoicing cron endpoint — see daily_invoicing.py
+from daily_invoicing import router as daily_invoicing_router  # noqa: E402
+app.include_router(daily_invoicing_router)
+
 bearer = HTTPBearer(auto_error=False)
 
 SCHEMA_HINT = "Supabase tables not found. Run /app/supabase_schema.sql in your Supabase SQL Editor."

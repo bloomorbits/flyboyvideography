@@ -623,6 +623,149 @@ def _send_confirmation_email(to_email: str, subject: str, html_body: str, text_b
 # ---------- Endpoints ----------
 
 
+# Balance-checkout helper: creates a Stripe Checkout Session for an already-
+# existing balance invoice (status='sent' or 'overdue') + writes the
+# corresponding payment_transactions row. Idempotent-friendly:
+#   - Stripe sessions are cheap; we deliberately create a fresh one on
+#     every call so a client can retry after a failed / cancelled attempt.
+#   - The invoice partial unique index + the webhook's
+#     `_finalise_balance_payment` idempotency guard mean creating N sessions
+#     against one invoice is safe — only one can transition status→paid.
+#
+# Returns (session_url, session_id). Raises HTTPException on failure so
+# the caller can bubble a clean HTTP error.
+def _create_balance_checkout_session(
+    sb,
+    *,
+    invoice: dict,
+    booking: dict,
+    client_email: str,
+    origin_url: str,
+) -> tuple[str, str]:
+    inv_id = invoice["id"]
+    booking_id = invoice["booking_id"]
+    amount = float(invoice["amount"])
+    if amount <= 0:
+        raise HTTPException(422, "Invoice amount must be positive.")
+
+    origin = (origin_url or PUBLIC_SITE_URL).rstrip("/")
+    if origin not in ALLOWED_ORIGIN_URLS:
+        log.warning("balance-checkout: origin_url=%r not in allowlist — falling back to PUBLIC_SITE_URL", origin_url)
+        origin = PUBLIC_SITE_URL.rstrip("/")
+
+    event_date_display = ""
+    try:
+        ev = booking.get("event_date") or booking.get("shoot_date")
+        if ev:
+            if isinstance(ev, str):
+                ev = date.fromisoformat(ev)
+            event_date_display = f" · Event {ev.isoformat()}"
+    except Exception:
+        pass
+
+    title = booking.get("title") or booking.get("shoot_type") or "Balance payment"
+
+    try:
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            payment_method_types=["card"],
+            line_items=[{
+                "quantity": 1,
+                "price_data": {
+                    "currency": (invoice.get("currency") or "gbp").lower(),
+                    "unit_amount": int(round(amount * 100)),  # pence
+                    "product_data": {
+                        "name": f"{title} — balance",
+                        "description": f"Balance payment · Invoice {invoice.get('invoice_number', inv_id)}{event_date_display}",
+                    },
+                },
+            }],
+            customer_email=client_email,
+            success_url=f"{origin}/book/success?session_id={{CHECKOUT_SESSION_ID}}&kind=balance",
+            cancel_url=f"{origin}/book/cancel",
+            metadata={
+                "payment_purpose": "balance",
+                "invoice_id": inv_id,
+                "booking_id": booking_id,
+                "client_email": client_email,
+            },
+        )
+    except Exception as e:
+        log.exception("balance Stripe session create failed for invoice %s", inv_id)
+        raise HTTPException(502, f"Payment provider error: {e}")
+
+    # Record the pending tx row. Uses UPSERT on session_id (unique) so an
+    # accidental double-call for the same session_id is safe. booking_intent_id
+    # left NULL — this row is not tied to a booking_intent, it's tied to an
+    # invoice (via metadata).
+    try:
+        sb.table("payment_transactions").insert({
+            "session_id": session.id,
+            "email": client_email,
+            "amount": amount,
+            "currency": (invoice.get("currency") or "gbp").lower(),
+            "status": "initiated",
+            "payment_status": "pending",
+        }).execute()
+    except Exception as e:
+        # Duplicate session_id is impossible unless Stripe collides. Log &
+        # continue — the finalise path will heal from the paid webhook.
+        log.warning("balance payment_transactions insert failed for session %s: %s", session.id, e)
+
+    return session.url, session.id
+
+
+@router.get("/api/booking/pay-balance/{invoice_id}")
+def pay_balance_redirect(invoice_id: str):
+    """Public entry point for the "Pay balance" button in balance / reminder
+    emails. Creates a fresh Stripe Checkout Session on demand and 302-
+    redirects to it. Refuses on any invoice that isn't a live balance
+    invoice awaiting payment.
+
+    Auth model: knowledge of the invoice UUID is the capability. UUIDs are
+    unguessable; we don't leak them anywhere public. If we later need to
+    tighten, wrap this in a signed short-lived token — but the surface
+    right now is identical to the deposit checkout flow (a Stripe session
+    URL emailed to the client).
+    """
+    from fastapi.responses import RedirectResponse
+
+    sb = _sb()
+    inv_rows = sb.table("invoices").select("*").eq("id", invoice_id).limit(1).execute().data
+    if not inv_rows:
+        raise HTTPException(404, "Invoice not found.")
+    invoice = inv_rows[0]
+
+    if invoice.get("payment_purpose") != "balance":
+        raise HTTPException(400, "This link is for balance payments only.")
+
+    if invoice.get("status") not in ("sent", "overdue"):
+        # Already paid / voided / draft — don't create a fresh session.
+        raise HTTPException(409, f"Invoice status is {invoice.get('status')!r}; cannot pay.")
+
+    booking_id = invoice.get("booking_id")
+    if not booking_id:
+        raise HTTPException(500, "Invoice has no booking link.")
+    bk_rows = sb.table("bookings").select("*").eq("id", booking_id).limit(1).execute().data
+    if not bk_rows:
+        raise HTTPException(500, "Booking for invoice not found.")
+    booking = bk_rows[0]
+
+    cl_rows = sb.table("clients").select("email").eq("id", invoice["client_id"]).limit(1).execute().data
+    if not cl_rows:
+        raise HTTPException(500, "Client for invoice not found.")
+    client_email = cl_rows[0]["email"]
+
+    url, _sid = _create_balance_checkout_session(
+        sb,
+        invoice=invoice,
+        booking=booking,
+        client_email=client_email,
+        origin_url=PUBLIC_SITE_URL,
+    )
+    return RedirectResponse(url, status_code=302)
+
+
 @router.get("/api/booking/availability")
 def availability(months_ahead: int = AVAILABILITY_MONTHS_AHEAD):
     """Return the list of blocked calendar dates in the next N months.
@@ -851,7 +994,7 @@ def booking_status(session_id: str):
             s = stripe.checkout.Session.retrieve(session_id)
             if s.payment_status == "paid" or s.status == "complete":
                 # Same idempotent finalisation the webhook runs.
-                _finalise_paid_session(session_id, s.payment_intent)
+                _finalise_paid_session(session_id, s.payment_intent, dict(s.metadata or {}))
                 tx = sb.table("payment_transactions").select("*").eq("session_id", session_id).limit(1).execute().data[0]
         except stripe.error.StripeError as e:  # transient — leave state alone
             log.info("Stripe probe on status endpoint failed: %s", e)
@@ -865,18 +1008,157 @@ def booking_status(session_id: str):
     )
 
 
-def _finalise_paid_session(session_id: str, payment_intent_id: Optional[str]) -> dict:
-    """Idempotent finalisation: turn a paid Stripe session into a confirmed
-    booking. Called from both the webhook and the /status endpoint's
-    inline probe. Returns a small diagnostic dict.
+def _finalise_balance_payment(
+    session_id: str,
+    payment_intent_id: Optional[str],
+    metadata: dict,
+) -> dict:
+    """Idempotent balance-invoice finalisation.
 
-    Order matters: the bookings INSERT is the atomic gate (partial unique
-    index does the arbitration). We mark payment_transactions='paid' AFTER
-    a successful insert so that a crash / transient network error mid-way
-    can be safely replayed by the next webhook retry (Stripe retries up
-    to 3 days on non-2xx).
+    Called from `_finalise_paid_session` when Stripe session metadata carries
+    `payment_purpose='balance'`. Marks the linked invoice as paid AND flips
+    the payment_transactions row to `paid` — both writes are guarded so a
+    replay (webhook retry, /status polling race, dual-pod delivery) can safely
+    fire N times and produce exactly one paid state, one payment_transactions
+    row, and zero double-emails.
+
+    Guards (in order):
+      1. Idempotency guard: if the invoice is already `paid` AND the tx row
+         is already `paid`, we return `already_paid` without any writes.
+      2. Self-heal guard: if the invoice is paid but the tx row is still
+         `pending`, we heal the tx forward (partial-crash recovery from a
+         prior attempt that died between invoice update and tx update).
+      3. First-time success: invoice→paid, tx→paid, both keyed on session_id
+         + invoice_id from metadata.
+
+    We deliberately do NOT decrement or recompute the balance amount here.
+    The invoice.amount was set to `bookings.budget - Σ(payment_transactions)`
+    at invoice-creation time (Phase 4). Whatever Stripe collected against
+    this session is what the client agreed to on the Checkout page. If a
+    manual partial payment lands AFTER this invoice is issued, that's a
+    real-world reconciliation matter — this flow doesn't try to auto-adjust.
     """
     sb = _sb()
+
+    invoice_id = metadata.get("invoice_id")
+    if not invoice_id:
+        log.error("balance session %s missing metadata.invoice_id — cannot finalise", session_id)
+        return {"skipped": "balance no invoice_id in metadata"}
+
+    # Look up invoice + tx row in parallel-safe order.
+    inv_rows = sb.table("invoices").select("*").eq("id", invoice_id).limit(1).execute().data
+    if not inv_rows:
+        log.error("balance session %s references invoice_id=%s which doesn't exist", session_id, invoice_id)
+        return {"skipped": "balance invoice not found"}
+    invoice = inv_rows[0]
+
+    if invoice.get("payment_purpose") != "balance":
+        # Defense-in-depth: metadata said balance, invoice says otherwise —
+        # someone tampered with metadata OR wired the wrong invoice. Refuse.
+        log.error(
+            "balance session %s targets invoice %s whose payment_purpose=%r (expected 'balance') — REFUSING",
+            session_id, invoice_id, invoice.get("payment_purpose"),
+        )
+        return {"skipped": "balance invoice payment_purpose mismatch"}
+
+    tx_rows = sb.table("payment_transactions").select("*").eq("session_id", session_id).limit(1).execute().data
+    tx = tx_rows[0] if tx_rows else None
+
+    invoice_already_paid = invoice.get("status") == "paid"
+    tx_already_paid = bool(tx) and tx.get("payment_status") == "paid"
+
+    # Guard 1 — full idempotency: nothing to do.
+    if invoice_already_paid and tx_already_paid:
+        return {"skipped": "balance already paid", "invoice_id": invoice_id}
+
+    # Guard 2 — self-heal: if we crashed mid-way on a prior attempt, one
+    # of the two rows may be behind. Heal both to the same paid state.
+    now = _now_iso()
+
+    if not invoice_already_paid:
+        # Only flip invoice if it wasn't already paid; the WHERE clause on
+        # status="sent" is a race-safe latch (two concurrent replays: only
+        # the one that sees status='sent' wins the flip, the other is a no-op).
+        sb.table("invoices").update({
+            "status": "paid",
+        }).eq("id", invoice_id).in_("status", ["sent", "overdue"]).execute()
+
+    if tx:
+        if not tx_already_paid:
+            sb.table("payment_transactions").update({
+                "status": "completed",
+                "payment_status": "paid",
+                "stripe_payment_intent_id": payment_intent_id or tx.get("stripe_payment_intent_id"),
+                "updated_at": now,
+            }).eq("session_id", session_id).eq("payment_status", "pending").execute()
+    else:
+        # No tx row for this session yet. Should have been inserted by the
+        # balance-checkout creator (Phase 3) — if it's missing, something
+        # jumped the checkout-creation step. Insert a minimal record now so
+        # we don't lose audit provenance, but log loudly.
+        log.warning(
+            "balance session %s has no payment_transactions row at finalise-time — inserting minimal one",
+            session_id,
+        )
+        sb.table("payment_transactions").insert({
+            "session_id": session_id,
+            "stripe_payment_intent_id": payment_intent_id,
+            "email": metadata.get("client_email") or "",
+            "amount": float(invoice["amount"]),
+            "currency": (invoice.get("currency") or "gbp").lower(),
+            "status": "completed",
+            "payment_status": "paid",
+        }).execute()
+
+    return {
+        "finalised": True,
+        "path": "balance",
+        "invoice_id": invoice_id,
+        "healed": invoice_already_paid and not tx_already_paid,
+    }
+
+
+def _finalise_paid_session(
+    session_id: str,
+    payment_intent_id: Optional[str],
+    metadata: Optional[dict] = None,
+) -> dict:
+    """Idempotent finalisation: turn a paid Stripe session into a confirmed
+    booking (deposit path) or a paid invoice (balance path). Called from both
+    the webhook and the /status endpoint's inline probe. Returns a small
+    diagnostic dict.
+
+    Branch key: Stripe session metadata.payment_purpose ∈ {'deposit', 'balance'}.
+    Legacy sessions (pre-Migration-012) have no key → treated as 'deposit'
+    (the original flow). Balance sessions are always tagged explicitly by
+    the balance-checkout creator so the DB partial unique index on
+    invoices(booking_id) WHERE payment_purpose='balance' + this branch key
+    are the two independent guards against double-billing.
+
+    Order matters (deposit path): the bookings INSERT is the atomic gate
+    (partial unique index does the arbitration). We mark payment_transactions
+    ='paid' AFTER a successful insert so that a crash / transient network error
+    mid-way can be safely replayed by the next webhook retry (Stripe retries
+    up to 3 days on non-2xx).
+    """
+    sb = _sb()
+
+    # Resolve metadata once. Callers on the hot path (webhook) pass it in;
+    # /status polling doesn't, so we backfill from Stripe. This adds one
+    # API call ONLY when metadata wasn't already provided.
+    if metadata is None:
+        try:
+            s = stripe.checkout.Session.retrieve(session_id)
+            metadata = dict(s.metadata or {})
+        except Exception as e:
+            log.warning("metadata retrieve failed for session %s (defaulting to deposit path): %s", session_id, e)
+            metadata = {}
+
+    purpose = (metadata.get("payment_purpose") or "deposit").lower()
+    if purpose == "balance":
+        return _finalise_balance_payment(session_id, payment_intent_id, metadata)
+
+    # ---- DEPOSIT PATH (original flow, unchanged) ----
 
     # Step 0 — idempotency: has this session already been finalised?
     existing = sb.table("bookings").select("id").eq("stripe_session_id", session_id).limit(1).execute().data
@@ -1127,10 +1409,10 @@ async def stripe_webhook(request: Request):
     error_message: Optional[str] = None
     try:
         if et == "checkout.session.completed":
-            res = _finalise_paid_session(obj["id"], obj.get("payment_intent"))
+            res = _finalise_paid_session(obj["id"], obj.get("payment_intent"), obj.get("metadata"))
             outcome = _classify_finalise_outcome(res)
         elif et == "checkout.session.async_payment_succeeded":
-            res = _finalise_paid_session(obj["id"], obj.get("payment_intent"))
+            res = _finalise_paid_session(obj["id"], obj.get("payment_intent"), obj.get("metadata"))
             outcome = _classify_finalise_outcome(res)
         elif et == "checkout.session.async_payment_failed":
             sb.table("payment_transactions").update({
@@ -1185,6 +1467,10 @@ def _classify_finalise_outcome(res: dict) -> str:
     if not isinstance(res, dict):
         return "unknown"
     if res.get("finalised"):
+        # Distinguish deposit vs balance path for post-hoc audit queries.
+        path = res.get("path")
+        if path == "balance":
+            return "finalised_balance"
         return "finalised"
     if res.get("refunded"):
         return "refunded_race"
