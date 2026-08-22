@@ -14,6 +14,12 @@ import { Suspense } from "react";
 function SuccessInner() {
   const params = useSearchParams();
   const sessionId = params.get("session_id");
+  // Branch the copy on whether this is a deposit payment (default, the
+  // client just booked) or a balance payment (the client already had a
+  // booking and just settled the remaining balance). Both flows land here
+  // because they share the same `/api/booking/status/{session_id}` polling
+  // contract; only the wording differs.
+  const isBalance = params.get("kind") === "balance";
   const [state, setState] = useState({ status: "checking", payment_status: "checking" });
   const [attempts, setAttempts] = useState(0);
   const [error, setError] = useState("");
@@ -62,7 +68,7 @@ function SuccessInner() {
     <div className="mx-auto max-w-2xl px-6 pb-24 pt-24">
       <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ink/60">Booking status</p>
 
-      {paid && (
+      {paid && !isBalance && (
         <>
           <h1 data-testid="success-headline-paid" className="mt-2 font-display text-4xl font-bold tracking-tight md:text-5xl">
             Your date is locked in.
@@ -75,6 +81,28 @@ function SuccessInner() {
             <Link
               href="/"
               data-testid="success-home-cta"
+              className="inline-flex items-center gap-2 rounded-full bg-ink px-5 py-3 text-sm font-medium text-cream hover:opacity-90"
+            >
+              Back to the site →
+            </Link>
+          </div>
+        </>
+      )}
+
+      {paid && isBalance && (
+        <>
+          <h1 data-testid="success-headline-balance-paid" className="mt-2 font-display text-4xl font-bold tracking-tight md:text-5xl">
+            Balance settled — you&apos;re all set.
+          </h1>
+          <p className="mt-4 text-base leading-relaxed text-ink/70">
+            Payment received. Your booking is now paid in full and we&apos;re on for the day.
+            A receipt will land in your inbox shortly. If you have any last-minute details
+            or a running order to share, hit reply on any of our emails — we read every one.
+          </p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link
+              href="/"
+              data-testid="success-balance-home-cta"
               className="inline-flex items-center gap-2 rounded-full bg-ink px-5 py-3 text-sm font-medium text-cream hover:opacity-90"
             >
               Back to the site →

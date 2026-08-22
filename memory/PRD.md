@@ -555,25 +555,82 @@ Defense-in-depth guards:
 - New: `backend/tests/test_balance_finalise.py`, `backend/tests/test_daily_invoicing.py`
 - New: `docs/BALANCE_INVOICING_RUNBOOK.md`
 
-### Dual-delivery observation status (Step 14 — still queued)
-
-24h monitor at session start: `seen_by_both=1, railway_only=0, preview_only=0`.
-Sample is thin (1 completed event); Nathan opted to keep Step 14 queued.
-Rerun `python scripts/monitor_dual_delivery.py --hours 48` to widen window
-before retiring the preview endpoint.
-
 ### Backlog after session 15
 
 Order preserved. Balance-collection ships freezes lifted:
 
 1. **P0** — Step 14 retirement (waiting on wider observation window; runbook now documents 48h/72h checkpoints + controlled-booking fallback)
-2. ~~**P1** — Magic-link recovery UI fix~~ **✅ SHIPPED** — see below
-3. **P1** — Admin-editable pricing (Migration 013+)
-4. **P1** — Calendar / reminder consolidation (Nathan's locked sequence: pricing → calendar/reminder → dashboard → Bunny.net → live chat)
-5. **P1** — Unified admin dashboard (Enquiry Inbox lives HERE, not standalone)
-6. **P1** — Bunny.net integration
-7. **P1** — Live chat
-8. **P2** — Retainer signup via Stripe Subscriptions, Welcome tour, V2 booking day-blocking, Deliverable 90-day expiration
+2. ~~**P1** — Magic-link recovery UI fix~~ **✅ SHIPPED**
+3. ~~**P1** — Admin-editable pricing (Migration 013+)~~ **✅ SHIPPED** — see below
+4. **P1** — Balance Success Page copy split (deposit vs balance) **✅ SHIPPED**
+5. **P1** — Calendar / reminder consolidation (Nathan's locked sequence: pricing → calendar/reminder → dashboard → Bunny.net → live chat)
+6. **P1** — Unified admin dashboard (Enquiry Inbox lives HERE, not standalone)
+7. **P1** — Bunny.net integration
+8. **P1** — Live chat
+9. **P2** — Retainer signup via Stripe Subscriptions, Welcome tour, V2 booking day-blocking, Deliverable 90-day expiration
+
+### Admin-editable pricing (Migration 013 — session 15)
+
+Goal: replace the twin-source pricing (`website/lib/pricing.js` + `backend/packages.py`) with a single admin-editable catalog stored in Supabase, so Nathan can change prices/coverage/features without a code deploy.
+
+Design picked (from ask_human choices 1c + 2b + 3a + 4a + 5b):
+- **Editable surface**: prices + coverage + tier features/leadIn arrays + everything else the /services page reads
+- **Site consumption**: Next.js `/services` fetches `/api/pricing` on every server render with 60s ISR revalidate; falls back to `pricing.js` constants on any error so the site never shows a broken pricing page
+- **Scope**: packages + graduation + extras + bookingTerms all in one catalog
+- **Admin UI**: CRA portal at `/admin/pricing`, gated by `profile.role === 'admin'`
+- **Workflow**: draft → publish (atomic swap); `Revert` discards draft back to published
+
+### Design of `pricing_catalog` table (Migration 013)
+- 2 rows total, keyed by `slot IN ('draft','published')`
+- `content` is JSONB holding the full catalog (packages + graduation + extras + bookingTerms)
+- Publish = single UPDATE that swaps `published.content := draft.content` — no partial-publish window
+- RLS: anon may SELECT `slot='published'` (the public `/api/pricing` endpoint); draft is service-role only (admin backend routes)
+- CHECK constraint enforces exactly the two allowed slots
+
+Application-layer safety:
+- **Pydantic Catalog schema** with `extra="forbid"`, `pattern=r"^[a-z][a-z0-9-]*$"` for IDs, `0 ≤ price ≤ 100_000`, tier-name uniqueness within a package, package-ID uniqueness, graduation.id must not collide with any package.id
+- **Referential-integrity guard on publish**: rejects publish (409) if removing a `(package_id, tier_name)` tuple that's still referenced by a live booking (`bookings.status IN ('confirmed','completed')`) or an in-flight paid intent. Response payload includes the affected booking IDs. `?force=1` overrides after manual reconciliation — logged loudly. Rename is diff-detected as remove+add so rename-while-referenced is caught by the same guard.
+
+### Endpoints
+- `GET /api/pricing` — public, published catalog
+- `GET /api/admin/pricing/draft` — returns { draft, published, dirty, updated_at }
+- `PUT /api/admin/pricing/draft` — replace draft (422 on shape errors before DB write)
+- `POST /api/admin/pricing/publish[?force=1]` — atomic swap + invalidate packages.py cache
+- `POST /api/admin/pricing/revert` — discard-my-draft
+
+### backend/packages.py refactor
+- `PRICING_SOURCE=code` (default) → hardcoded PACKAGES constant (byte-identical to pre-013 behaviour). Zero-drift default.
+- `PRICING_SOURCE=db` → reads `pricing_catalog.published` with a `PRICING_CACHE_TTL_SECONDS=60` in-process cache; falls back to hardcoded PACKAGES on any DB read failure so booking checkout NEVER breaks.
+- `publish` endpoint calls `packages.invalidate_cache()` so new prices are effective immediately, not up to 60s later.
+- Public API (`find_package`, `find_tier`, `deposit_gbp`, `DEPOSIT_PERCENTAGE`) unchanged — `booking.py` needs no edits.
+
+### Files touched / created (Mig 013)
+- New: `supabase_migration_013_pricing_catalog.sql`, `backend/tests/introspect_013.py`
+- New: `backend/pricing.py`, `backend/tests/test_pricing_admin.py`
+- New: `frontend/src/pages/AdminPricing.js`
+- Modified: `backend/packages.py` (gated DB source + cache)
+- Modified: `backend/server.py` (mount pricing router)
+- Modified: `website/app/services/page.js` (fetch from API with 60s ISR + fallback)
+- Modified: `frontend/src/App.js` (add `/admin/pricing` route)
+
+### Tests — 21/21 PASS (Mig 013)
+- Public shape: 1
+- Auth-gate (401 on 4 endpoints): 1
+- GET draft: 1
+- PUT draft validation (string-price, missing field, extra key, dup tier names, dup pkg IDs, graduation collision, out-of-range): 7
+- Publish atomic swap, no-op-on-no-diff, revert: 3
+- **Referential-integrity guard**: 6 dedicated tests as Nathan explicitly demanded — confirmed booking blocks, in-flight intent blocks, cancelled-only allows, force override, rename-as-remove-plus-add, price-only positive control
+- Cache invalidation on publish (subprocess PRICING_SOURCE=db verification): 1
+
+### Deploy checklist for Mig 013
+1. Apply `/app/supabase_migration_013_pricing_catalog.sql` in Supabase Studio (Nathan applied at 21:18 UTC session 15)
+2. Verify with `python backend/tests/introspect_013.py` — PASS
+3. Push code to `main` → Railway auto-deploy
+4. Set `PRICING_SOURCE=db` on Railway env (opt in to the new source)
+5. Verify: hit `/api/pricing` on Railway, confirm published catalog returns
+6. Manually visit portal `/admin/pricing`, edit a price, save draft, publish, watch `/services` update within 60s
+
+### Dual-delivery observation status (Step 14 — still queued)
 
 ### Magic-link recovery UI fix (session 15, post balance-collection)
 

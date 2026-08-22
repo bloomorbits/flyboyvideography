@@ -84,3 +84,18 @@ Supabase project: https://pnqqmzszasvfnvnnonvd.supabase.co (auth + Postgres; NO 
   auth-user + client + booking + booking_intent + deposit-tx per module,
   fully cleaned up at end.
 - Email domain convention: `@flyboytest.com` — same as existing tests.
+
+
+## Pricing admin test account (session 15 — Migration 013)
+
+- Email: `admin_pricing_test@flyboytest.com`
+- Password: `PricingTest!2026`
+- Role: `admin` (idempotent seed in `backend/tests/test_pricing_admin.py::admin_token`)
+- Purpose: exercises `/api/admin/pricing/*` endpoints + the AdminPricing UI.
+- Requires `SUPABASE_ANON_KEY` in env to run the tests (loaded from
+  `frontend/.env` REACT_APP_SUPABASE_ANON_KEY at test time; the sign-in
+  step uses a throwaway client to avoid downgrading the module-level
+  service-role client — same isolation pattern the daily-invoicing tests
+  now follow).
+- Test suite: `ALLOW_ATTACK_SIM=1 SUPABASE_ANON_KEY=<...> pytest -v backend/tests/test_pricing_admin.py`
+  21 tests, ~60s runtime.
