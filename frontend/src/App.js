@@ -14,6 +14,7 @@ import Admin from "./pages/Admin";
 import AdminSecurity from "./pages/AdminSecurity";
 import AdminPricing from "./pages/AdminPricing";
 import AdminCalendar from "./pages/AdminCalendar";
+import AdminDashboard from "./pages/AdminDashboard";
 
 function Protected({ children }) {
   const { session, loading } = useAuth();
@@ -41,7 +42,8 @@ export default function App() {
             <Route path="/deliverables/:id" element={<DeliverableDetail />} />
             <Route path="/invoices" element={<Invoices />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/admin" element={<Admin />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/operate" element={<Admin />} />
             <Route path="/admin/security" element={<AdminSecurity />} />
             <Route path="/admin/pricing" element={<AdminPricing />} />
             <Route path="/admin/calendar" element={<AdminCalendar />} />

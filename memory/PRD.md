@@ -563,11 +563,57 @@ Order preserved. Balance-collection ships freezes lifted:
 2. ~~**P1** — Magic-link recovery UI fix~~ **✅ SHIPPED**
 3. ~~**P1** — Admin-editable pricing (Migration 013+)~~ **✅ SHIPPED**
 4. ~~**P1** — Balance Success Page copy split~~ **✅ SHIPPED**
-5. ~~**P1** — Calendar / reminder consolidation (Nathan's locked sequence #2)~~ **✅ SHIPPED (P1 scope: option b — shoots + invoice-due dates)**
-6. **P1** — Unified admin dashboard (Enquiry Inbox lives HERE, not standalone; Booking-Migration Assistant + live-preview iframe also belong here)
-7. **P1** — Bunny.net integration
-8. **P1** — Live chat
-9. **P2** — Retainer signup via Stripe Subscriptions, Welcome tour, V2 booking day-blocking, Deliverable 90-day expiration, Calendar option c/d (deliverable expiries + manual reminders — additive extensions to the shipped calendar)
+5. ~~**P1** — Calendar / reminder consolidation (locked sequence #2)~~ **✅ SHIPPED**
+6. ~~**P1** — Unified admin dashboard (locked sequence #3)~~ **✅ SHIPPED (attention band + schedule band + cron history tile)**
+7. **P1** — Bunny.net integration (locked sequence #4)
+8. **P1** — Live chat (locked sequence #5)
+9. **P2** — Retainer signup via Stripe Subscriptions, Welcome tour, V2 booking day-blocking, Deliverable 90-day expiration, Calendar option c/d (deliverable expiries + manual reminders — additive extensions), Booking deep-link per-booking detail page, Force-publish audit / Booking-Migration Assistant, Pricing live-preview iframe in dashboard
+
+### Unified admin dashboard (session 15 — locked sequence #3)
+
+Scope: single cockpit page for Flyboy. Nathan picked **option d** — attention band + schedule band, no KPI panel (small-volume business doesn't need vanity metrics). Route strategy: **replace `/admin`** with dashboard, move operational workspace to **`/admin/operate`**.
+
+**Endpoints (all `require_admin`)**:
+- `GET /api/admin/dashboard` — batched attention-band aggregator + last-cron-run tile
+- `GET /api/admin/enquiries?status=&limit=` — list contact_enquiries
+- `PATCH /api/admin/enquiries/{id}` — status change (new|replied|archived|spam)
+
+**Attention band tiles (P1)**:
+- New enquiries (`contact_enquiries` status='new') with inline "Mark replied / Archive" actions
+- Overdue invoices (`invoices` status='overdue') with total £ pill
+- Balance actions (`invoices` payment_purpose='balance', status IN sent/overdue, due_on ≤ today+7) with **"REMINDER QUEUED" badge** on rows where `reminder_sent_at IS NULL AND due_on ≤ today+2` (the reminder-queued indicator folded in)
+- Deliverables in review (`deliverables` status IN in_review/revisions_requested)
+- Daily-invoicing cron history (last run) — reads Migration 014's `cron_runs` table, degrades gracefully to a placeholder if the table isn't there
+
+**Schedule band**: reuses `GET /api/admin/calendar?from=today&to=today+7`. Grouped by date, chip-per-event with kind color coding. Deep-links to source pages.
+
+**Per-tile isolation**: each attention loader is wrapped in try/except so a single broken source returns `{count:0, items:[], error}` on that tile without taking down the whole dashboard.
+
+### Migration 014 — cron_runs
+- `public.cron_runs (id, job_name, started_at, finished_at, summary, error_count CHECK ≥ 0, ok)` — one row per invocation, JSONB summary stored verbatim so new counters appear without another migration
+- Indexes: `(job_name, started_at DESC)` + partial `(started_at DESC) WHERE ok=false`
+- RLS enabled, no policies — service-role only
+- `daily_invoicing.py` opens a row at start, updates with summary + error_count + finished_at + ok at end. Both writes best-effort; a Supabase blip during audit never blocks the invoicing work
+
+### Files (Unified Admin Dashboard)
+- New: `supabase_migration_014_cron_runs.sql`, `backend/tests/introspect_014.py`
+- New: `backend/admin_dashboard.py`, `frontend/src/pages/AdminDashboard.js`
+- Modified: `backend/daily_invoicing.py` (audit-open at start, audit-close at end)
+- Modified: `backend/server.py` (mount admin_dashboard router)
+- Modified: `frontend/src/App.js` (route swap: `/admin` = dashboard, `/admin/operate` = old workspace)
+
+### Verification (per Nathan's standard — real endpoint, not mocks)
+- introspect_014 → PASS 6/6
+- Real cron fire → real `cron_runs` row inserted with 10 summary keys populated, matches endpoint response byte-for-byte
+- `/api/admin/dashboard` cron tile returned `id_matches_audit_row=True` → proves tile reads what cron wrote
+- Screenshot of `/admin` shows all 5 tiles + schedule band with real Aug 24 Graduation Reels shoot (pre-existing prod row surfaced via calendar aggregator)
+
+### Deploy checklist for Mig 014
+1. Apply `/app/supabase_migration_014_cron_runs.sql` in **production** Supabase Studio (Nathan applied at 12:57 UTC session 15)
+2. Verify with `python backend/tests/introspect_014.py` → PASS
+3. Push code to `main` → Railway auto-deploy — no new env vars needed
+4. Next 08:00 UTC cron run automatically writes its first prod audit row
+5. Visit portal `/admin` → cron tile shows the run
 
 ### Calendar aggregator (session 15 — locked sequence #2)
 
