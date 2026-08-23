@@ -565,7 +565,7 @@ Order preserved. Balance-collection ships freezes lifted:
 4. ~~**P1** — Balance Success Page copy split~~ **✅ SHIPPED**
 5. ~~**P1** — Calendar / reminder consolidation (locked sequence #2)~~ **✅ SHIPPED**
 6. ~~**P1** — Unified admin dashboard (locked sequence #3)~~ **✅ SHIPPED (attention band + schedule band + cron history tile)**
-7. **P1** — Bunny.net integration (locked sequence #4)
+7. **P1** — Bunny.net integration (locked sequence #4) — **design locked** in `/app/docs/BUNNY_PHASE_1_SPEC.md`, build deferred to next session until Nathan completes Bunny account setup (30-45 min: create library + storage zone, enable embed token auth, upload static logo watermark, set 8 Railway env vars). Watermarking Phase 1 = static library logo + HTML overlay code (deterrent, not leak-traceability — explicitly documented). Storage backup = manual dashboard upload, no code.
 8. **P1** — Live chat (locked sequence #5)
 9. **P2** — Retainer signup via Stripe Subscriptions, Welcome tour, V2 booking day-blocking, Deliverable 90-day expiration, Calendar option c/d (deliverable expiries + manual reminders — additive extensions), Booking deep-link per-booking detail page, Force-publish audit / Booking-Migration Assistant, Pricing live-preview iframe in dashboard
 
