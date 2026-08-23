@@ -107,6 +107,10 @@ app.include_router(pricing_router)
 from admin_calendar import router as admin_calendar_router  # noqa: E402
 app.include_router(admin_calendar_router)
 
+# Admin dashboard aggregator + enquiries CRUD — see admin_dashboard.py
+from admin_dashboard import router as admin_dashboard_router  # noqa: E402
+app.include_router(admin_dashboard_router)
+
 bearer = HTTPBearer(auto_error=False)
 
 SCHEMA_HINT = "Supabase tables not found. Run /app/supabase_schema.sql in your Supabase SQL Editor."

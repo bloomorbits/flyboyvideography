@@ -260,12 +260,33 @@ def run_daily_invoicing(request: Request, _claims: dict = Depends(_require_cron_
 
     Query params (all optional; defaults from env):
       - dry_run=1 : compute but do not write / send
+
+    Audit trail (Migration 014):
+      * INSERT a `cron_runs` row at start (finished_at=NULL, ok=true default).
+      * UPDATE that row with the full summary + error_count + finished_at
+        + ok=(error_count==0) at the end.
+      * If Migration 014 hasn't been applied, both write attempts silently
+        fail and the invoicing work proceeds unaffected — the audit is
+        best-effort by design.
     """
     dry_run = request.query_params.get("dry_run") == "1"
     sb = _sb()
     today = date.today()
     invoice_target_date = (today + timedelta(days=INVOICE_LEAD_DAYS)).isoformat()
     reminder_cutoff = (today + timedelta(days=REMINDER_LEAD_DAYS)).isoformat()
+
+    # ---- Audit: open a run record ----
+    run_id: Optional[str] = None
+    try:
+        row = sb.table("cron_runs").insert({
+            "job_name": "daily_invoicing",
+            "summary": {"dry_run": dry_run},
+        }).execute().data
+        if row:
+            run_id = row[0]["id"]
+    except Exception as e:
+        # Silent — best-effort audit. Never block the actual work.
+        log.warning("cron_runs audit-open failed (Mig 014 not applied?): %s", e)
 
     summary = {
         "date": today.isoformat(),
@@ -462,6 +483,18 @@ def run_daily_invoicing(request: Request, _claims: dict = Depends(_require_cron_
         except Exception as e:
             log.exception("reminder branch failed for invoice %s", inv.get("id"))
             summary["errors"].append({"invoice_id": inv.get("id"), "err": f"{type(e).__name__}: {e}"})
+
+    # ---- Audit: close the run record ----
+    if run_id:
+        try:
+            sb.table("cron_runs").update({
+                "finished_at": _now_iso(),
+                "summary": summary,
+                "error_count": len(summary["errors"]),
+                "ok": len(summary["errors"]) == 0,
+            }).eq("id", run_id).execute()
+        except Exception as e:
+            log.warning("cron_runs audit-close failed: %s", e)
 
     return summary
 
