@@ -561,13 +561,49 @@ Order preserved. Balance-collection ships freezes lifted:
 
 1. **P0** — Step 14 retirement (waiting on wider observation window; runbook now documents 48h/72h checkpoints + controlled-booking fallback)
 2. ~~**P1** — Magic-link recovery UI fix~~ **✅ SHIPPED**
-3. ~~**P1** — Admin-editable pricing (Migration 013+)~~ **✅ SHIPPED** — see below
-4. **P1** — Balance Success Page copy split (deposit vs balance) **✅ SHIPPED**
-5. **P1** — Calendar / reminder consolidation (Nathan's locked sequence: pricing → calendar/reminder → dashboard → Bunny.net → live chat)
-6. **P1** — Unified admin dashboard (Enquiry Inbox lives HERE, not standalone)
+3. ~~**P1** — Admin-editable pricing (Migration 013+)~~ **✅ SHIPPED**
+4. ~~**P1** — Balance Success Page copy split~~ **✅ SHIPPED**
+5. ~~**P1** — Calendar / reminder consolidation (Nathan's locked sequence #2)~~ **✅ SHIPPED (P1 scope: option b — shoots + invoice-due dates)**
+6. **P1** — Unified admin dashboard (Enquiry Inbox lives HERE, not standalone; Booking-Migration Assistant + live-preview iframe also belong here)
 7. **P1** — Bunny.net integration
 8. **P1** — Live chat
-9. **P2** — Retainer signup via Stripe Subscriptions, Welcome tour, V2 booking day-blocking, Deliverable 90-day expiration
+9. **P2** — Retainer signup via Stripe Subscriptions, Welcome tour, V2 booking day-blocking, Deliverable 90-day expiration, Calendar option c/d (deliverable expiries + manual reminders — additive extensions to the shipped calendar)
+
+### Calendar aggregator (session 15 — locked sequence #2)
+
+Scope: single admin view of upcoming events. Nathan picked **option b** — shoots + deposit-invoice-due + balance-invoice-due, no new schema. Designed to be additive-extensible to options c (deliverable expiries) and d (manual reminders) by adding one loader function + one SOURCES entry.
+
+**Endpoint**: `GET /api/admin/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD` (require_admin). Range guarded ≤ 400 days.
+
+**Response contract**:
+```
+{
+  "range": {"from": ISO, "to": ISO},
+  "events": [
+    {
+      "kind":  "shoot" | "invoice_deposit" | "invoice_balance",
+      "date":  ISO-YYYY-MM-DD,
+      "title": str,
+      "id":    "{kind}:{source-uuid}",   # namespaced, unique across kinds
+      "link":  str,                      # portal deep-link
+      # optional per-kind — omitted (not null) when N/A:
+      "status", "amount_gbp", "client_name", "meta"
+    }
+  ]
+}
+```
+Events sorted `(date, kind, id)` ascending. Per-source isolation: a broken loader returns a `_error` sentinel event but doesn't take down the endpoint.
+
+**Extensibility invariants (locked in during design review)**:
+- Adding a new event kind = one new `_load_X` function + one line in `SOURCES` in `backend/admin_calendar.py`. Zero endpoint or schema changes.
+- Frontend `KIND_STYLES` map has a fallback style so new kinds render sensibly before someone adds a bespoke entry.
+- Contract-required fields (`kind, date, title, id, link`) are never stored inside `meta`.
+
+**Files**:
+- New: `backend/admin_calendar.py`, `frontend/src/pages/AdminCalendar.js`
+- Modified: `backend/server.py` (mount), `frontend/src/App.js` (add `/admin/calendar` route)
+
+**Verification**: real-endpoint test seeded a shoot (2026-09-04) + balance invoice (2026-08-28), hit `GET /api/admin/calendar` with a real admin JWT, saw both kinds returned sorted correctly + 3 pre-existing prod events also surfaced. Screenshot of `/admin/calendar` on the deployed portal shows both chips in their correct cells. Prod DB cleaned up post-test.
 
 ### Admin-editable pricing (Migration 013 — session 15)
 
