@@ -765,3 +765,55 @@ Verified 7/7 PASS against the preview backend in session 15.
 6. Manual dry-run POST via curl (see runbook) → expect JSON summary with `dry_run=true`
 7. Add Railway Cron schedule: daily 08:00 UTC, command from runbook
 8. Watch first live run in Railway logs
+
+
+## Railway cron 401 diagnostic fix (Feb 2026 — post-session 15)
+
+Root cause of the silently-failing daily cron: Railway's cron command was
+posting `Authorization: Bearer $CRON_JOB_JWT_SECRET` (i.e. the raw
+43-char urlsafe secret) instead of running the inline-Python one-liner
+in `docs/BALANCE_INVOICING_RUNBOOK.md` that mints a signed HS256 JWT
+with `aud=flyboy:cron:daily-invoicing` + `scope=cron:invoicing`. PyJWT
+would then try to base64-decode the raw urlsafe secret as a JWT header
+and raise an inscrutable `utf-8 codec can't decode byte 0x9e` error →
+generic 401. No entries were ever landing in `cron_runs` because the
+auth wall was firing before `run_daily_invoicing` executed.
+
+**Backend fix (`backend/daily_invoicing.py::_require_cron_token`
+lines 86-107)**: inside the `jwt.PyJWTError` branch, count the dots
+in the received credential. A real HS256 JWT is always three
+dot-separated base64url segments (exactly two dots). Any other shape
+= caller almost certainly posted the raw secret. Log the length + dot
+count + a pointer to the runbook, and raise 401 with a clear
+`"Cron token malformed — expected a signed JWT (3 dot-separated
+segments). Check the cron command mints a JWT rather than posting the
+secret directly."` message so the misconfiguration is diagnosable
+from Railway logs alone.
+
+**Verification** (test_reports/iteration_15.json — 7/7 PASS):
+- Case 1 (raw secret as bearer): 401 + clear malformed diagnostic
+- Case 2 (valid signed JWT): 200 + well-formed dry-run summary
+- Case 3 (missing token): 401 + `Cron bearer token required.`
+- Regression sweep: wrong-secret 401, wrong-audience 401, wrong-scope
+  403, expired-token 401 — all still correct after the diagnostic
+  branch was inserted.
+
+**Mutation-verified regression pytest**:
+- `backend/tests/test_daily_invoicing.py::
+   test_endpoint_refuses_raw_secret_as_bearer_with_clear_diagnostic`
+  — asserts both status=401 AND detail contains 'malformed' AND
+  ('signed jwt' or '3 dot-separated'). Verified: swap
+  `if tok.count(".") != 2:` → `if False:` and the test flips PASS→FAIL
+  with `AssertionError: assert 'malformed' in 'invalid cron token.'`.
+- New auth-only sibling file `backend/tests/test_cron_auth_only.py`
+  (from testing agent) — 7/7 tests, runnable without
+  ALLOW_ATTACK_SIM (auth-only, doesn't mutate Supabase).
+
+**⚠ Railway operator action still required** (Nathan):
+Update the Railway Cron schedule's Command field to the EXACT one-liner
+in `docs/BALANCE_INVOICING_RUNBOOK.md` § "Railway Cron setup" step 3.
+It mints the JWT inline and posts to `$SELF_URL/api/admin/jobs/run-daily-invoicing`.
+Do NOT paste `Bearer $CRON_JOB_JWT_SECRET` anywhere — that was the bug.
+
+After the Railway command is fixed, watch for the first successful
+`cron_runs` row via `/admin` dashboard cron-history tile.
