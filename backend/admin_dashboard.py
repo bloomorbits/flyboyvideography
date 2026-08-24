@@ -36,6 +36,13 @@ ATTENTION_ITEMS_PER_TILE = 5
 BALANCE_HORIZON_DAYS = 7
 REMINDER_QUEUED_WINDOW_DAYS = 2  # matches daily_invoicing.REMINDER_LEAD_DAYS
 
+# Staleness threshold for the daily cron. The job is scheduled once a day
+# (24h cadence); 26h gives a 2h grace before we flag a silent failure.
+# The whole point: convert an invisible, silently-stalled job into a
+# visible red flag automatically, instead of relying on someone checking.
+import os as _os
+CRON_STALE_HOURS = float(_os.environ.get("CRON_STALE_HOURS", "26"))
+
 ALLOWED_ENQUIRY_STATUSES = ("new", "replied", "archived", "spam")
 
 
@@ -202,11 +209,32 @@ def _tile_deliverables_in_review(sb) -> dict:
     return {"count": len(rows), "items": items}
 
 
+def _parse_ts(iso: Optional[str]):
+    """Parse a Supabase timestamptz string to an aware datetime, or None."""
+    if not iso:
+        return None
+    from datetime import datetime
+    try:
+        s = iso.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            from datetime import timezone as _tz
+            dt = dt.replace(tzinfo=_tz.utc)
+        return dt
+    except Exception:
+        return None
+
+
 def _tile_cron_last_run(sb) -> Optional[dict]:
-    """Last daily-invoicing cron run. Returns None if:
+    """Last daily-invoicing cron run + a staleness signal. Returns None if:
       - Migration 014 (cron_runs table) not applied yet, OR
       - no runs recorded yet.
     Frontend tolerates None → renders "no data yet" placeholder.
+
+    Staleness: `stale` is True when there has been NO successful (ok=true)
+    run within CRON_STALE_HOURS. This flags the "job died silently and
+    nobody noticed" failure mode — a red row (or no row) for >26h surfaces
+    automatically instead of waiting for someone to check.
     """
     try:
         rows = (
@@ -227,6 +255,33 @@ def _tile_cron_last_run(sb) -> Optional[dict]:
     if not rows:
         return None
     r = rows[0]
+
+    # Last SUCCESSFUL run — the "green row" the staleness check keys off.
+    last_ok_at = None
+    try:
+        ok_rows = (
+            sb.table("cron_runs")
+            .select("started_at")
+            .eq("job_name", "daily_invoicing")
+            .eq("ok", True)
+            .order("started_at", desc=True)
+            .limit(1)
+            .execute()
+            .data or []
+        )
+        if ok_rows:
+            last_ok_at = ok_rows[0]["started_at"]
+    except Exception:
+        log.exception("cron last-ok read failed")
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    ok_dt = _parse_ts(last_ok_at)
+    hours_since_ok = round((now - ok_dt).total_seconds() / 3600.0, 1) if ok_dt else None
+    # Stale when there's no green row inside the window (never succeeded, or
+    # last success is older than the threshold).
+    stale = (hours_since_ok is None) or (hours_since_ok > CRON_STALE_HOURS)
+
     return {
         "id": r["id"],
         "started_at": r["started_at"],
@@ -234,6 +289,10 @@ def _tile_cron_last_run(sb) -> Optional[dict]:
         "ok": r["ok"],
         "error_count": r["error_count"],
         "summary": r.get("summary") or {},
+        "stale": stale,
+        "last_ok_at": last_ok_at,
+        "hours_since_last_ok": hours_since_ok,
+        "stale_threshold_hours": CRON_STALE_HOURS,
     }
 
 

@@ -1,0 +1,52 @@
+name: Daily balance invoicing
+
+# Real scheduled cron for the automated balance-collection cycle.
+# Runs a one-shot mint-and-POST against the Railway backend endpoint.
+# NOT a Railway service — see docs/BALANCE_INVOICING_RUNBOOK.md for why.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   CRON_JOB_JWT_SECRET  — MUST match the value set on the Railway backend
+#   SELF_URL             — Railway backend base URL (e.g. https://flyboy-api.up.railway.app)
+
+on:
+  schedule:
+    # 08:00 UTC daily — early-morning window across EU timezones; no client
+    # gets an invoice email at 3am. GitHub cron is UTC and best-effort (may
+    # lag a few minutes under load) — fine for a daily job.
+    - cron: "0 8 * * *"
+  # Manual trigger for verification / ad-hoc runs. `dry_run` defaults to
+  # false so a manual run does real work unless you tick it.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (compute but do not write/send)"
+        type: boolean
+        default: false
+
+concurrency:
+  # Never let two invoicing runs overlap.
+  group: daily-invoicing
+  cancel-in-progress: false
+
+jobs:
+  invoice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install --quiet "PyJWT>=2.8" "httpx>=0.27"
+
+      - name: Run daily invoicing
+        env:
+          CRON_JOB_JWT_SECRET: ${{ secrets.CRON_JOB_JWT_SECRET }}
+          SELF_URL: ${{ secrets.SELF_URL }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+        run: python scripts/run_daily_invoicing_cron.py

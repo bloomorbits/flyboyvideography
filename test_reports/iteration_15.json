@@ -1,0 +1,52 @@
+{
+  "summary": "Verified Railway cron 401 diagnostic fix on POST /api/admin/jobs/run-daily-invoicing against LIVE backend (https://db-bridge-5.preview.emergentagent.com). All 3 primary auth cases + 4 regression cases PASS (7/7). The diagnostic branch in _require_cron_token() correctly detects the raw-secret-as-bearer failure mode and returns a clear message; valid signed JWT is accepted; missing token is rejected with the exact expected detail; and no sibling failure modes were cannibalised (wrong-secret, wrong-audience, wrong-scope, expired-token still return the correct status + detail).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_results": {
+    "CASE1_raw_secret_as_bearer": {
+      "expected_status": 401,
+      "actual_status": 401,
+      "expected_detail_fragment": "malformed AND (signed jwt OR 3 dot-separated)",
+      "actual_detail": "Cron token malformed — expected a signed JWT (3 dot-separated segments). Check the cron command mints a JWT rather than posting the secret directly.",
+      "result": "PASS"
+    },
+    "CASE2_valid_signed_jwt_dry_run": {
+      "expected_status": 200,
+      "actual_status": 200,
+      "expected_body_keys": ["date","dry_run","invoice_target_date","reminder_cutoff","invoices_created","invoices_skipped_already_exists","invoices_skipped_zero_balance","reminders_sent","reminders_skipped_paid_manually","errors"],
+      "all_keys_present": true,
+      "dry_run_value": true,
+      "result": "PASS"
+    },
+    "CASE3_missing_token": {
+      "expected_status": 401,
+      "actual_status": 401,
+      "expected_detail": "Cron bearer token required.",
+      "actual_detail": "Cron bearer token required.",
+      "result": "PASS"
+    },
+    "REGRESSION": {
+      "wrong_secret": {"status": 401, "detail": "Invalid cron token.", "result": "PASS"},
+      "wrong_audience": {"status": 401, "detail": "Cron token audience mismatch.", "result": "PASS"},
+      "wrong_scope": {"status": 403, "detail": "Cron token scope mismatch.", "result": "PASS"},
+      "expired_token": {"status": 401, "detail": "Cron token expired.", "result": "PASS"}
+    }
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_cron_auth_only.py",
+    "/app/test_reports/pytest/cron_auth_iteration15.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fix is minimal, well-scoped, and correctly placed inside the jwt.PyJWTError branch of _require_cron_token — it only intercepts strings that PyJWT already failed to parse, so it cannot accidentally mask legitimate JWT verification errors.",
+    "Diagnostic message is actionable and points to the runbook — good operator ergonomics for Railway logs.",
+    "test_daily_invoicing.py mixes auth-only tests with DB-mutating tests behind a single ALLOW_ATTACK_SIM guard. Consider splitting auth tests into their own file (as done in test_cron_auth_only.py) so CI can regress the auth surface without touching Supabase."
+  ],
+  "updated_files": ["/app/backend/tests/test_cron_auth_only.py"],
+  "success_rate": {"backend": "100% (7/7 auth tests pass)", "frontend": "not tested (backend-only per request)"},
+  "seed_data_creation": "None — auth-only tests do not mutate the DB.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The DB-mutating invoice/reminder branch tests in /app/backend/tests/test_daily_invoicing.py were intentionally NOT executed (out of scope per review request). To run them, set ALLOW_ATTACK_SIM=1 and pytest that file. Auth-only regression lives in /app/backend/tests/test_cron_auth_only.py and can be run without any guard.",
+  "rca of the issue": "Railway cron was configured with `Authorization: Bearer $CRON_JOB_JWT_SECRET` instead of minting a signed HS256 JWT. PyJWT tried to base64-decode the raw urlsafe secret as a JWT header and raised an inscrutable UTF-8 codec error. The fix (daily_invoicing.py:93-107) inspects the credential inside the PyJWTError branch — if it doesn't have exactly 2 dots (i.e. is not a 3-segment JWT), it raises a specific 401 with 'Cron token malformed — expected a signed JWT (3 dot-separated segments)' message. Verified against live backend: raw secret → clear diagnostic 401; valid JWT → 200; no token → 'Cron bearer token required.' 401; all sibling failure modes intact."
+}

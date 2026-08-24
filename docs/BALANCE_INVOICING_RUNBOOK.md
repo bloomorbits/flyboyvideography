@@ -2,8 +2,8 @@
 
 Phased build complete: Migration 012 (DB), webhook branch (Phase 2), balance
 checkout endpoint (Phase 3), daily invoicing + reminder job (Phase 4/5).
-This doc is the deployment checklist for Phase 6 — wiring the Railway Cron
-and validating the end-to-end path in production.
+This doc is the deployment checklist for Phase 6 — wiring the scheduled
+cron (GitHub Actions) and validating the end-to-end path in production.
 
 ## What's shipped
 
@@ -24,20 +24,75 @@ REMINDER_LEAD_DAYS=2                                  # optional, default 2
 PUBLIC_API_BASE=https://<railway>/                    # optional; used for the pay-balance URL in emails. Falls back to REACT_APP_BACKEND_URL.
 ```
 
+The scheduled cron runs from **GitHub Actions**, not Railway, so `SELF_URL`
+is a **GitHub Actions secret**, not a Railway env var (see the GitHub Actions
+section below). `CRON_JOB_JWT_SECRET` is needed in **both** places and the
+two values MUST match: Railway signs-verifies with it, GitHub Actions signs
+with it.
+
 Local `backend/.env` already has `CRON_JOB_JWT_SECRET` for pytest. **Do not
-share the same secret across environments** — generate a fresh one per env.
+share the same secret across environments** — generate a fresh one per env
+(the Railway value and the GitHub Actions value are the same secret; the
+local pytest value is a different one).
 
 Generate: `python -c "import secrets; print(secrets.token_urlsafe(48))"`
 
-## Cron token — how to mint one
+## Scheduled cron — GitHub Actions (NOT a Railway "Command" field)
 
-The endpoint expects a JWT signed with `CRON_JOB_JWT_SECRET`, algorithm
-`HS256`, with `aud=flyboy:cron:daily-invoicing` and `scope=cron:invoicing`
-and a short-ish `exp` (5 min is fine for a cron process that runs once and
-exits).
+> **Architecture correction.** Earlier revisions of this runbook told you to
+> "add a Cron schedule to the backend service" and paste a one-liner into a
+> "Command" field. **That field does not exist.** Railway's cron feature
+> re-runs a service's existing **Start Command** on a schedule — and our
+> backend's Start Command (`backend/Procfile`) is
+> `uvicorn server:app --host 0.0.0.0 --port $PORT`, a long-lived web server.
+> Attaching a cron to it would just spin up another web server; it would
+> never mint a JWT or POST the endpoint. This mismatch is why no genuine
+> scheduled run ever landed in `cron_runs`.
+>
+> The real cron runs from **GitHub Actions**:
+> `.github/workflows/daily-invoicing.yml` → `scripts/run_daily_invoicing_cron.py`.
+> Chosen deliberately over a second Railway service because it (a) adds no
+> ongoing Railway service to monitor/hand over, (b) keeps the cron secret in
+> a separate credential store (GitHub Actions secrets) from the app, and
+> (c) gives real per-run history + logs, which Railway cron does not have
+> natively.
 
-Reference minting snippet — copy into `scripts/mint_cron_token.py` on
-Railway, or embed inside the cron command:
+### How it works
+
+- `scripts/run_daily_invoicing_cron.py` mints a short-lived HS256 JWT
+  (`aud=flyboy:cron:daily-invoicing`, `scope=cron:invoicing`, `exp` +5min)
+  signed with `CRON_JOB_JWT_SECRET`, POSTs it to
+  `$SELF_URL/api/admin/jobs/run-daily-invoicing`, prints the summary, and
+  exits non-zero on any non-2xx — so a failure shows up as a **red run** in
+  the Actions history (and GitHub emails the repo admins on failure).
+- `.github/workflows/daily-invoicing.yml` runs it daily at **08:00 UTC**
+  (`cron: "0 8 * * *"`) and also on-demand via **workflow_dispatch** (with an
+  optional `dry_run` toggle for safe verification).
+
+### Setup steps
+
+1. Add two **repository secrets** (Settings → Secrets and variables → Actions):
+   - `CRON_JOB_JWT_SECRET` — MUST be byte-identical to the value set on the
+     Railway backend (mint fresh for production; do NOT reuse the local
+     pytest secret).
+   - `SELF_URL` — the Railway backend base URL, e.g.
+     `https://flyboy-api.up.railway.app` (no trailing slash needed).
+2. Merge the workflow to the default branch so GitHub registers the schedule.
+   (Scheduled workflows only run from the **default branch**.)
+3. **Verify manually first** — Actions tab → "Daily balance invoicing" →
+   "Run workflow" → tick `dry_run` → Run. Confirm the run is green and the
+   logs show `HTTP 200` + a summary JSON with `"dry_run": true`.
+4. Run it once more **without** `dry_run` to do a real pass, then confirm a
+   `cron_runs` row appears with `dry_run=false, ok=true, error_count=0`.
+5. Leave the daily schedule to fire on its own thereafter.
+
+### Reference: the minted token
+
+The endpoint expects an HS256 JWT signed with `CRON_JOB_JWT_SECRET`, with
+`aud=flyboy:cron:daily-invoicing`, `scope=cron:invoicing`, and a short `exp`.
+`scripts/run_daily_invoicing_cron.py` builds exactly this — you don't need to
+mint by hand. For a manual `curl` probe from your laptop, the equivalent
+mint snippet is:
 
 ```python
 import jwt, os, time
@@ -45,62 +100,41 @@ now = int(time.time())
 print(jwt.encode({
     "aud": "flyboy:cron:daily-invoicing",
     "scope": "cron:invoicing",
-    "iat": now,
-    "exp": now + 300,  # 5 minutes
+    "iat": now, "exp": now + 300,
 }, os.environ["CRON_JOB_JWT_SECRET"], algorithm="HS256"))
 ```
 
-## Railway Cron setup
-
-1. In the Railway dashboard, add a new Cron schedule to the backend service.
-2. Frequency: **daily at 08:00 UTC** (early-morning window catches all EU
-   timezones during working hours; no client is happy about receiving
-   an invoice at 3am).
-3. Command (single line — this is what Railway will run):
-
-```
-python -c "
-import jwt, os, time, httpx
-now = int(time.time())
-tok = jwt.encode({
-    'aud': 'flyboy:cron:daily-invoicing',
-    'scope': 'cron:invoicing',
-    'iat': now, 'exp': now + 300,
-}, os.environ['CRON_JOB_JWT_SECRET'], algorithm='HS256')
-r = httpx.post(
-    os.environ.get('SELF_URL', 'https://<your-railway-domain>') + '/api/admin/jobs/run-daily-invoicing',
-    headers={'Authorization': f'Bearer {tok}'}, timeout=90.0,
-)
-print(r.status_code, r.text[:2000])
-r.raise_for_status()
-"
-```
-
 Notes:
-- `SELF_URL` avoids hard-coding the domain. Set it in Railway env to the
-  backend's public URL (e.g. `https://flyboy-api.up.railway.app`).
-- 90s timeout is generous — the job returns in <5s for typical volume.
-- Non-2xx from the endpoint makes the cron run fail visibly in Railway
-  logs, which is what we want.
+- `SELF_URL` avoids hard-coding the domain in the script.
+- The endpoint returns in <5s for typical volume; the workflow allows 5min.
+- A non-2xx makes the Actions run fail visibly — that's the point.
 
 ## Deployment order
 
-1. Merge the code changes to `main` and let Railway auto-deploy.
-2. Set `CRON_JOB_JWT_SECRET` in Railway env.
+1. Merge the code changes (incl. `.github/workflows/daily-invoicing.yml` and
+   `scripts/run_daily_invoicing_cron.py`) to the default branch and let
+   Railway auto-deploy the backend.
+2. Set `CRON_JOB_JWT_SECRET` in **Railway** env.
 3. Set `PUBLIC_API_BASE` in Railway env (points at the Railway backend URL —
    this is the URL that appears inside customer emails and 302-redirects
    to Stripe).
-4. Set `SELF_URL` in Railway env (only used by the cron command).
+4. Add **GitHub Actions repository secrets**: `CRON_JOB_JWT_SECRET` (same
+   value as Railway) and `SELF_URL` (the Railway backend base URL). `SELF_URL`
+   is NOT a Railway env var — it belongs to the Actions runner.
 5. **Run the preflight verifier from your laptop** (safe — read-only + dry-run only):
    ```bash
    export SELF_URL="https://<your-railway-domain>"
    export CRON_JOB_JWT_SECRET="<the secret you set on Railway>"
    python scripts/preflight_balance_cron.py
    ```
-   All 7 checks must PASS before adding the cron schedule. Exit code 0 = green.
-6. Add the Railway Cron schedule using the command below.
-7. Wait for the first scheduled run — check Railway logs for the summary
-   JSON output.
+   All 7 checks must PASS before relying on the schedule. Exit code 0 = green.
+6. In the GitHub Actions tab, run **"Daily balance invoicing" → Run workflow**
+   with `dry_run` ticked. Confirm a green run + `HTTP 200` + `"dry_run": true`
+   summary in the logs.
+7. Run it once more without `dry_run` (a real pass), then confirm a
+   `cron_runs` row with `dry_run=false, ok=true, error_count=0`. The daily
+   `0 8 * * *` schedule then runs on its own; failures show as red runs in
+   the Actions history (GitHub emails repo admins).
 
 ## Runtime health signals
 
@@ -120,9 +154,10 @@ booking never blocks the rest of the batch.
 
 The migration is additive-only. If the balance flow needs to be paused:
 
-1. **Immediate pause:** disable the Railway Cron schedule. No invoices
-   fire, no reminders fire. Manual payment collection continues as before
-   (existing client-side booking flow untouched).
+1. **Immediate pause:** disable the GitHub Actions workflow ("Daily balance
+   invoicing" → ⋯ → Disable workflow), or comment out the `schedule:` block.
+   No invoices fire, no reminders fire. Manual payment collection continues
+   as before (existing client-side booking flow untouched).
 2. **Full rollback:** revert the code changes. The DB columns and index
    remain but have zero effect without the code that writes to them.
 

@@ -84,6 +84,27 @@ def _require_cron_token(creds: HTTPAuthorizationCredentials = Depends(_bearer)):
     except jwt.InvalidAudienceError:
         raise HTTPException(401, "Cron token audience mismatch.")
     except jwt.PyJWTError as e:
+        # Specific diagnostic for the "raw secret pasted into Authorization
+        # header instead of a signed JWT" failure mode. A real HS256 JWT
+        # is always three dot-separated base64url segments. If the caller
+        # posted a bare token_urlsafe secret (no dots), the message from
+        # PyJWT is inscrutable ("Invalid header string: 'utf-8' can't
+        # decode byte 0x9e..."). Detect and say plainly what happened.
+        tok = creds.credentials or ""
+        if tok.count(".") != 2:
+            log.warning(
+                "cron token verify failed — received %d-char string with %d dots; "
+                "expected a signed HS256 JWT (three dot-separated segments). "
+                "Most likely the cron command is posting the raw "
+                "CRON_JOB_JWT_SECRET instead of minting a JWT signed with it. "
+                "See docs/BALANCE_INVOICING_RUNBOOK.md for the correct mint-and-post one-liner.",
+                len(tok), tok.count("."),
+            )
+            raise HTTPException(
+                401,
+                "Cron token malformed — expected a signed JWT (3 dot-separated segments). "
+                "Check the cron command mints a JWT rather than posting the secret directly.",
+            )
         log.warning("cron token verify failed: %s", e)
         raise HTTPException(401, "Invalid cron token.")
     # Scope claim — belt-and-braces so a future secret shared across

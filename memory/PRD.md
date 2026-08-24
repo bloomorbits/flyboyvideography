@@ -565,7 +565,7 @@ Order preserved. Balance-collection ships freezes lifted:
 4. ~~**P1** — Balance Success Page copy split~~ **✅ SHIPPED**
 5. ~~**P1** — Calendar / reminder consolidation (locked sequence #2)~~ **✅ SHIPPED**
 6. ~~**P1** — Unified admin dashboard (locked sequence #3)~~ **✅ SHIPPED (attention band + schedule band + cron history tile)**
-7. **P1** — Bunny.net integration (locked sequence #4)
+7. **P1** — Bunny.net integration (locked sequence #4) — **design locked** in `/app/docs/BUNNY_PHASE_1_SPEC.md`, build deferred to next session until Nathan completes Bunny account setup (30-45 min: create library + storage zone, enable embed token auth, upload static logo watermark, set 8 Railway env vars). Watermarking Phase 1 = static library logo + HTML overlay code (deterrent, not leak-traceability — explicitly documented). Storage backup = manual dashboard upload, no code.
 8. **P1** — Live chat (locked sequence #5)
 9. **P2** — Retainer signup via Stripe Subscriptions, Welcome tour, V2 booking day-blocking, Deliverable 90-day expiration, Calendar option c/d (deliverable expiries + manual reminders — additive extensions), Booking deep-link per-booking detail page, Force-publish audit / Booking-Migration Assistant, Pricing live-preview iframe in dashboard
 
@@ -765,3 +765,127 @@ Verified 7/7 PASS against the preview backend in session 15.
 6. Manual dry-run POST via curl (see runbook) → expect JSON summary with `dry_run=true`
 7. Add Railway Cron schedule: daily 08:00 UTC, command from runbook
 8. Watch first live run in Railway logs
+
+
+## Railway cron 401 diagnostic fix (Feb 2026 — post-session 15)
+
+Root cause of the silently-failing daily cron: Railway's cron command was
+posting `Authorization: Bearer $CRON_JOB_JWT_SECRET` (i.e. the raw
+43-char urlsafe secret) instead of running the inline-Python one-liner
+in `docs/BALANCE_INVOICING_RUNBOOK.md` that mints a signed HS256 JWT
+with `aud=flyboy:cron:daily-invoicing` + `scope=cron:invoicing`. PyJWT
+would then try to base64-decode the raw urlsafe secret as a JWT header
+and raise an inscrutable `utf-8 codec can't decode byte 0x9e` error →
+generic 401. No entries were ever landing in `cron_runs` because the
+auth wall was firing before `run_daily_invoicing` executed.
+
+**Backend fix (`backend/daily_invoicing.py::_require_cron_token`
+lines 86-107)**: inside the `jwt.PyJWTError` branch, count the dots
+in the received credential. A real HS256 JWT is always three
+dot-separated base64url segments (exactly two dots). Any other shape
+= caller almost certainly posted the raw secret. Log the length + dot
+count + a pointer to the runbook, and raise 401 with a clear
+`"Cron token malformed — expected a signed JWT (3 dot-separated
+segments). Check the cron command mints a JWT rather than posting the
+secret directly."` message so the misconfiguration is diagnosable
+from Railway logs alone.
+
+**Verification** (test_reports/iteration_15.json — 7/7 PASS):
+- Case 1 (raw secret as bearer): 401 + clear malformed diagnostic
+- Case 2 (valid signed JWT): 200 + well-formed dry-run summary
+- Case 3 (missing token): 401 + `Cron bearer token required.`
+- Regression sweep: wrong-secret 401, wrong-audience 401, wrong-scope
+  403, expired-token 401 — all still correct after the diagnostic
+  branch was inserted.
+
+**Mutation-verified regression pytest**:
+- `backend/tests/test_daily_invoicing.py::
+   test_endpoint_refuses_raw_secret_as_bearer_with_clear_diagnostic`
+  — asserts both status=401 AND detail contains 'malformed' AND
+  ('signed jwt' or '3 dot-separated'). Verified: swap
+  `if tok.count(".") != 2:` → `if False:` and the test flips PASS→FAIL
+  with `AssertionError: assert 'malformed' in 'invalid cron token.'`.
+- New auth-only sibling file `backend/tests/test_cron_auth_only.py`
+  (from testing agent) — 7/7 tests, runnable without
+  ALLOW_ATTACK_SIM (auth-only, doesn't mutate Supabase).
+
+**⚠ Railway operator action still required** (Nathan):
+Update the Railway Cron schedule's Command field to the EXACT one-liner
+in `docs/BALANCE_INVOICING_RUNBOOK.md` § "Railway Cron setup" step 3.
+It mints the JWT inline and posts to `$SELF_URL/api/admin/jobs/run-daily-invoicing`.
+Do NOT paste `Bearer $CRON_JOB_JWT_SECRET` anywhere — that was the bug.
+
+After the Railway command is fixed, watch for the first successful
+`cron_runs` row via `/admin` dashboard cron-history tile.
+
+
+## Stale-cron flag on admin dashboard (June 2026 — post-fork)
+
+Observability follow-up to the silent-cron bug: the dashboard now flags a
+daily-invoicing cron that has gone stale, converting an invisible silent
+failure into a visible red flag automatically.
+
+- **Backend** (`admin_dashboard.py::_tile_cron_last_run`): now also fetches
+  the most recent SUCCESSFUL (`ok=true`) run and computes `stale`,
+  `last_ok_at`, `hours_since_last_ok`, `stale_threshold_hours`. `stale` is
+  True when there is NO green row inside `CRON_STALE_HOURS` (env, default
+  26h — 24h cadence + 2h grace). A recent FAILED run does NOT reset the
+  clock (staleness keys off the last green row, not the last run).
+- **Frontend** (`AdminDashboard.js`): prominent red banner at the top of the
+  Needs-attention band (`data-testid="cron-stale-banner"`) + `STALE` pill +
+  red ring/border + in-tile warning on the cron tile. Copy differs for
+  "never succeeded" vs "last green run Nh ago".
+- **Tests**: `backend/tests/test_cron_staleness.py` — 7/7 PASS,
+  mutation-verified (breaking the `> CRON_STALE_HOURS` threshold flips the
+  two boundary tests PASS→FAIL). Fresh(1h)/inside(25h)=not stale;
+  past(27h)/recent-failure-no-recent-success/never-succeeded=stale.
+- **Verified end-to-end** in preview: temporarily set `CRON_STALE_HOURS`
+  very low, confirmed banner + STALE badge render, then reverted.
+
+NOTE (pre-existing, not this task): the dashboard schedule band's calendar
+loaders (`_load_shoots`, `_load_invoice_deposits/balances`) intermittently
+surface "Source _load_X failed" chips — a `GET /api/admin/calendar` loader
+issue unrelated to the cron flag. Worth a look next session.
+
+
+## Scheduled cron moved to GitHub Actions (June 2026 — post-fork) — ROOT CAUSE
+
+Investigation of the never-landing scheduled run found a structural bug, not
+just the earlier auth bug: `cron_runs` held only 3 rows, ALL `dry_run=true`
+manual tests from session 15, none at 08:00 UTC. The runbook told the
+operator to "add a Cron schedule to the backend service" with a "Command"
+field — **that field does not exist**. Railway cron re-runs a service's
+Start Command (`uvicorn server:app`, a long-lived web server), so it could
+never mint-and-POST. That's why no genuine scheduled run ever reached the
+endpoint.
+
+**Fix (Nathan chose GitHub Actions over a 2nd Railway service):**
+- New `.github/workflows/daily-invoicing.yml` — `schedule: 0 8 * * *` +
+  `workflow_dispatch` (with a `dry_run` toggle). Installs PyJWT+httpx, runs
+  the script. Non-2xx → red run (GitHub emails repo admins).
+- New `scripts/run_daily_invoicing_cron.py` — mints the HS256 JWT
+  (aud/scope/exp+5min) from `CRON_JOB_JWT_SECRET`, POSTs
+  `$SELF_URL/api/admin/jobs/run-daily-invoicing`, prints summary, exits
+  non-zero on failure.
+- Rationale: no extra Railway service to monitor/hand over; cron secret in a
+  separate credential store (GH Actions secrets); real per-run history/logs.
+- Secrets required: `CRON_JOB_JWT_SECRET` (must match Railway) + `SELF_URL`
+  (Railway backend URL) as **GitHub Actions repository secrets**.
+- `docs/BALANCE_INVOICING_RUNBOOK.md` rewritten to describe the real
+  architecture (env-vars split, GitHub Actions setup, deployment order,
+  rollback = disable workflow). Removed the nonexistent-Railway-field steps.
+
+**Verified from my side:** ran the runner against the preview backend —
+valid secret+dry_run → HTTP 200 + summary + exit 0; wrong secret → 401 +
+exit 1; missing SELF_URL → exit 1 (no request). Workflow YAML parses clean.
+
+**⚠ Operator actions still required (Nathan) — P0 NOT yet closed:**
+1. Merge workflow + script to the default branch (scheduled workflows only
+   run from default branch).
+2. Add GH Actions secrets `CRON_JOB_JWT_SECRET` (= Railway value) + `SELF_URL`.
+3. Actions tab → "Daily balance invoicing" → Run workflow (dry_run) → green.
+4. Run once without dry_run → confirm a `cron_runs` row with
+   `dry_run=false, ok=true, error_count=0`. THAT is the genuine-green proof.
+
+Once done, re-query `cron_runs` to confirm the real row appears — only then
+is the P0 closed.

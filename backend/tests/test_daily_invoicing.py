@@ -182,6 +182,34 @@ def test_endpoint_refuses_expired_token():
     assert r.status_code == 401, r.status_code
 
 
+def test_endpoint_refuses_raw_secret_as_bearer_with_clear_diagnostic():
+    """Regression for the Railway-cron 401 bug: the cron command was
+    posting `Bearer $CRON_JOB_JWT_SECRET` (i.e. the raw secret string)
+    instead of minting a signed JWT with it. PyJWT would then emit an
+    inscrutable "utf-8 codec can't decode byte" error.
+
+    _require_cron_token now detects "not a 3-segment JWT" up front and
+    surfaces a clear "malformed — expected a signed JWT" message so the
+    misconfiguration is diagnosable from Railway logs alone.
+
+    Mutation-check hint: if the `tok.count(".") != 2` branch is removed
+    from _require_cron_token, this assertion on the detail message
+    string flips from PASS to FAIL.
+    """
+    # Post the raw secret (no dots — real HS256 JWTs always have exactly two).
+    r = requests.post(
+        _endpoint(),
+        headers={"Authorization": f"Bearer {CRON_SECRET}"},
+        timeout=30,
+    )
+    assert r.status_code == 401, r.status_code
+    detail = r.json().get("detail", "")
+    # Must specifically call out the "JWT expected, secret received" failure
+    # mode, not just a generic "Invalid cron token."
+    assert "malformed" in detail.lower(), detail
+    assert "signed jwt" in detail.lower() or "3 dot-separated" in detail.lower(), detail
+
+
 # ---------- Invoice branch tests ----------
 
 def _run(dry_run=False):
