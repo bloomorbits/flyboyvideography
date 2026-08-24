@@ -846,3 +846,46 @@ NOTE (pre-existing, not this task): the dashboard schedule band's calendar
 loaders (`_load_shoots`, `_load_invoice_deposits/balances`) intermittently
 surface "Source _load_X failed" chips — a `GET /api/admin/calendar` loader
 issue unrelated to the cron flag. Worth a look next session.
+
+
+## Scheduled cron moved to GitHub Actions (June 2026 — post-fork) — ROOT CAUSE
+
+Investigation of the never-landing scheduled run found a structural bug, not
+just the earlier auth bug: `cron_runs` held only 3 rows, ALL `dry_run=true`
+manual tests from session 15, none at 08:00 UTC. The runbook told the
+operator to "add a Cron schedule to the backend service" with a "Command"
+field — **that field does not exist**. Railway cron re-runs a service's
+Start Command (`uvicorn server:app`, a long-lived web server), so it could
+never mint-and-POST. That's why no genuine scheduled run ever reached the
+endpoint.
+
+**Fix (Nathan chose GitHub Actions over a 2nd Railway service):**
+- New `.github/workflows/daily-invoicing.yml` — `schedule: 0 8 * * *` +
+  `workflow_dispatch` (with a `dry_run` toggle). Installs PyJWT+httpx, runs
+  the script. Non-2xx → red run (GitHub emails repo admins).
+- New `scripts/run_daily_invoicing_cron.py` — mints the HS256 JWT
+  (aud/scope/exp+5min) from `CRON_JOB_JWT_SECRET`, POSTs
+  `$SELF_URL/api/admin/jobs/run-daily-invoicing`, prints summary, exits
+  non-zero on failure.
+- Rationale: no extra Railway service to monitor/hand over; cron secret in a
+  separate credential store (GH Actions secrets); real per-run history/logs.
+- Secrets required: `CRON_JOB_JWT_SECRET` (must match Railway) + `SELF_URL`
+  (Railway backend URL) as **GitHub Actions repository secrets**.
+- `docs/BALANCE_INVOICING_RUNBOOK.md` rewritten to describe the real
+  architecture (env-vars split, GitHub Actions setup, deployment order,
+  rollback = disable workflow). Removed the nonexistent-Railway-field steps.
+
+**Verified from my side:** ran the runner against the preview backend —
+valid secret+dry_run → HTTP 200 + summary + exit 0; wrong secret → 401 +
+exit 1; missing SELF_URL → exit 1 (no request). Workflow YAML parses clean.
+
+**⚠ Operator actions still required (Nathan) — P0 NOT yet closed:**
+1. Merge workflow + script to the default branch (scheduled workflows only
+   run from default branch).
+2. Add GH Actions secrets `CRON_JOB_JWT_SECRET` (= Railway value) + `SELF_URL`.
+3. Actions tab → "Daily balance invoicing" → Run workflow (dry_run) → green.
+4. Run once without dry_run → confirm a `cron_runs` row with
+   `dry_run=false, ok=true, error_count=0`. THAT is the genuine-green proof.
+
+Once done, re-query `cron_runs` to confirm the real row appears — only then
+is the P0 closed.
