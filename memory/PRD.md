@@ -817,3 +817,32 @@ Do NOT paste `Bearer $CRON_JOB_JWT_SECRET` anywhere — that was the bug.
 
 After the Railway command is fixed, watch for the first successful
 `cron_runs` row via `/admin` dashboard cron-history tile.
+
+
+## Stale-cron flag on admin dashboard (June 2026 — post-fork)
+
+Observability follow-up to the silent-cron bug: the dashboard now flags a
+daily-invoicing cron that has gone stale, converting an invisible silent
+failure into a visible red flag automatically.
+
+- **Backend** (`admin_dashboard.py::_tile_cron_last_run`): now also fetches
+  the most recent SUCCESSFUL (`ok=true`) run and computes `stale`,
+  `last_ok_at`, `hours_since_last_ok`, `stale_threshold_hours`. `stale` is
+  True when there is NO green row inside `CRON_STALE_HOURS` (env, default
+  26h — 24h cadence + 2h grace). A recent FAILED run does NOT reset the
+  clock (staleness keys off the last green row, not the last run).
+- **Frontend** (`AdminDashboard.js`): prominent red banner at the top of the
+  Needs-attention band (`data-testid="cron-stale-banner"`) + `STALE` pill +
+  red ring/border + in-tile warning on the cron tile. Copy differs for
+  "never succeeded" vs "last green run Nh ago".
+- **Tests**: `backend/tests/test_cron_staleness.py` — 7/7 PASS,
+  mutation-verified (breaking the `> CRON_STALE_HOURS` threshold flips the
+  two boundary tests PASS→FAIL). Fresh(1h)/inside(25h)=not stale;
+  past(27h)/recent-failure-no-recent-success/never-succeeded=stale.
+- **Verified end-to-end** in preview: temporarily set `CRON_STALE_HOURS`
+  very low, confirmed banner + STALE badge render, then reverted.
+
+NOTE (pre-existing, not this task): the dashboard schedule band's calendar
+loaders (`_load_shoots`, `_load_invoice_deposits/balances`) intermittently
+surface "Source _load_X failed" chips — a `GET /api/admin/calendar` loader
+issue unrelated to the cron flag. Worth a look next session.

@@ -225,16 +225,39 @@ function DeliverablesTile({ tile }) {
 
 function CronTile({ cron }) {
   const daily = cron?.daily_invoicing;
+  const stale = !!daily?.stale;
   return (
-    <section className={cardCls} data-testid="tile-cron">
+    <section
+      className={`${cardCls} ${stale ? "border-[#FF6B6B] ring-1 ring-[#FF6B6B]/40" : ""}`}
+      data-testid="tile-cron"
+    >
       <div className={tileHeadCls}>
         <h3 className={tileTitleCls}>Daily-invoicing cron</h3>
         {daily && (
-          <span className={countPillCls} style={{ color: daily.ok ? "#7ED957" : "#FF6B6B" }}>
-            {daily.ok ? "OK" : `${daily.error_count} error(s)`}
+          <span
+            className={countPillCls}
+            style={{ color: stale ? "#FF6B6B" : daily.ok ? "#7ED957" : "#FF6B6B" }}
+            data-testid="cron-status-pill"
+          >
+            {stale ? "STALE" : daily.ok ? "OK" : `${daily.error_count} error(s)`}
           </span>
         )}
       </div>
+      {stale && (
+        <div
+          className="mb-3 rounded border border-[#FF6B6B]/50 bg-[#FF6B6B]/10 px-3 py-2"
+          data-testid="cron-stale-warning"
+        >
+          <p className="text-[13px] font-semibold text-[#FF6B6B]">
+            ⚠ No successful run in over {daily.stale_threshold_hours}h
+          </p>
+          <p className="mt-0.5 text-[11px] text-zinc-300">
+            {daily.last_ok_at
+              ? `Last green run was ${daily.hours_since_last_ok}h ago (${fmtDateTime(daily.last_ok_at)}). The cron should fire daily — check Railway.`
+              : "No successful run has ever been recorded. Verify the Railway cron command is minting a signed JWT (see BALANCE_INVOICING_RUNBOOK.md)."}
+          </p>
+        </div>
+      )}
       {!daily ? (
         <p className={emptyCls}>No runs recorded yet — the cron hasn&apos;t fired since Migration 014 was applied.</p>
       ) : (
@@ -392,15 +415,31 @@ export default function AdminDashboard() {
           {loading || !data ? (
             <p className={emptyCls}>Loading…</p>
           ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <EnquiriesTile tile={data.attention.enquiries} onMark={markEnquiry} />
-              <OverdueInvoicesTile tile={data.attention.overdue_invoices} />
-              <BalanceActionsTile tile={data.attention.balance_actions} />
-              <DeliverablesTile tile={data.attention.deliverables_in_review} />
-              <div className="md:col-span-2">
-                <CronTile cron={data.cron} />
+            <>
+              {data.cron?.daily_invoicing?.stale && (
+                <div
+                  className="mb-4 flex items-center gap-3 rounded-lg border border-[#FF6B6B] bg-[#FF6B6B]/10 px-4 py-3"
+                  data-testid="cron-stale-banner"
+                >
+                  <span className="text-lg text-[#FF6B6B]">⚠</span>
+                  <span className="text-[13px] text-zinc-100">
+                    <span className="font-semibold text-[#FF6B6B]">Daily-invoicing cron looks stale.</span>{" "}
+                    {data.cron.daily_invoicing.last_ok_at
+                      ? `No successful run in ${data.cron.daily_invoicing.hours_since_last_ok}h (threshold ${data.cron.daily_invoicing.stale_threshold_hours}h).`
+                      : `No successful run ever recorded (threshold ${data.cron.daily_invoicing.stale_threshold_hours}h).`}
+                  </span>
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <EnquiriesTile tile={data.attention.enquiries} onMark={markEnquiry} />
+                <OverdueInvoicesTile tile={data.attention.overdue_invoices} />
+                <BalanceActionsTile tile={data.attention.balance_actions} />
+                <DeliverablesTile tile={data.attention.deliverables_in_review} />
+                <div className="md:col-span-2">
+                  <CronTile cron={data.cron} />
+                </div>
               </div>
-            </div>
+            </>
           )}
         </section>
 
