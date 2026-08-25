@@ -1023,6 +1023,16 @@ key), and in-browser player token enforcement + overlay render.
 NEXT: frontend rework — DeliverableDetail.js (watch/download/overlay) +
 Admin.js (Bunny GUID + storage object fields).
 
+### Webhook accept-path PROVEN with real Bunny events (June 2026)
+Set Webhook URL on the Stream library → Railway endpoint. Linked a persistent
+deliverable to a test GUID, triggered a dashboard **re-encode**. Genuine
+Bunny-signed webhooks landed and were verified+applied live:
+`Processing → Encoding → Finished` (HMAC-SHA256 over raw body, header lookup
+case-insensitive, idempotent). This closes the LAST backend item — item #4
+accept-path with a real signature. Header names confirmed correct
+(`x-bunnystream-signature[-version|-algorithm]`, case-insensitive in
+Starlette). BACKEND PHASE FULLY GREEN — ready for frontend.
+
 **Download policy RESOLVED (Nathan):** "Download original" is client-facing
 but **gated to approved/final deliverables only** (`status IN
 ('approved','final_delivered')`). Drafts/in-review are stream-only under DRM
