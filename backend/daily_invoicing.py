@@ -517,7 +517,75 @@ def run_daily_invoicing(request: Request, _claims: dict = Depends(_require_cron_
         except Exception as e:
             log.warning("cron_runs audit-close failed: %s", e)
 
+    # ---- Heartbeat: one-line "cron ran" email so the daily run self-reports.
+    # Closes the loop on "how would we catch a silent failure sooner" — a
+    # green note lands every morning; if it stops arriving (or GitHub Actions
+    # emails a red run), that's the signal. Skipped on dry runs (test noise).
+    summary["heartbeat_sent"] = False
+    if not dry_run:
+        summary["heartbeat_sent"] = _send_heartbeat(summary)
+
     return summary
+
+
+def _send_heartbeat(summary: dict) -> bool:
+    """Best-effort daily heartbeat email. Never raises. Returns True if a
+    send was attempted (recipient configured), False otherwise."""
+    to_email = (
+        os.environ.get("CRON_HEARTBEAT_TO")
+        or os.environ.get("CONTACT_TO_EMAIL")
+        or os.environ.get("ADMIN_EMAIL")
+        # Last resort: first entry of ADMIN_EMAILS (the admin-bootstrap list).
+        # ADMIN_EMAIL (singular) often isn't set; ADMIN_EMAILS usually is.
+        or (os.environ.get("ADMIN_EMAILS", "").split(",")[0])
+        or ""
+    ).strip()
+    if not to_email:
+        log.info("heartbeat: no recipient configured (set CRON_HEARTBEAT_TO) — skipping")
+        return False
+
+    errs = len(summary.get("errors", []))
+    created = len(summary.get("invoices_created", []))
+    reminders = len(summary.get("reminders_sent", []))
+    manual = len(summary.get("reminders_skipped_paid_manually", []))
+    ok = errs == 0
+    icon = "✅" if ok else "⚠️"
+    verdict = "ran green" if ok else f"ran with {errs} error(s)"
+    date_str = summary.get("date", "")
+
+    one_line = (
+        f"{icon} Daily invoicing {verdict} — "
+        f"{created} invoice(s) created, {reminders} reminder(s) sent"
+        f"{f', {manual} settled outside checkout' if manual else ''}."
+    )
+    subject = f"{icon} Flyboy daily invoicing — {verdict} ({date_str})"
+    text_body = (
+        f"{one_line}\n\n"
+        f"Date: {date_str}\n"
+        f"Invoices created: {created}\n"
+        f"Reminders sent: {reminders}\n"
+        f"Settled outside checkout: {manual}\n"
+        f"Errors: {errs}\n"
+    )
+    if errs:
+        import json as _json
+        text_body += "\nError detail:\n" + _json.dumps(summary.get("errors", []), indent=2)[:2000]
+    html_body = (
+        f'<p style="font-size:15px;margin:0 0 12px">{one_line}</p>'
+        f'<table style="font:13px/1.6 monospace;color:#444">'
+        f'<tr><td>Date</td><td style="padding-left:16px">{date_str}</td></tr>'
+        f'<tr><td>Invoices created</td><td style="padding-left:16px">{created}</td></tr>'
+        f'<tr><td>Reminders sent</td><td style="padding-left:16px">{reminders}</td></tr>'
+        f'<tr><td>Settled outside checkout</td><td style="padding-left:16px">{manual}</td></tr>'
+        f'<tr><td>Errors</td><td style="padding-left:16px;color:{"#c00" if errs else "#080"}">{errs}</td></tr>'
+        f'</table>'
+    )
+    try:
+        _send_email(to_email, subject, html_body, text_body)
+        return True
+    except Exception as e:
+        log.warning("heartbeat send failed: %s", e)
+        return False
 
 
 def _now_iso() -> str:

@@ -889,3 +889,92 @@ exit 1; missing SELF_URL → exit 1 (no request). Workflow YAML parses clean.
 
 Once done, re-query `cron_runs` to confirm the real row appears — only then
 is the P0 closed.
+
+### ✅ P0 CLOSED (June 2026) — genuine green scheduled run confirmed
+
+Nathan merged the workflow, added the GH Actions secrets, ran dry-run (green,
+HTTP 200), then ran a real (non-dry-run) pass. Verified against the
+production Supabase (`pnqqmzszasvfnvnnonvd` — Railway writes to the SAME
+project the preview pod queries, so this is real prod evidence):
+- Genuine row `2026-08-25T00:05:17Z` — `ok=true, error_count=0,
+  dry_run=false, summary.date=2026-08-25` (id a37a3902…). Matches the
+  Actions log byte-for-byte. An earlier real row exists at 23:58Z (Aug 24).
+- **Empty result verified correct, not a silent miss:** 0 bookings of ANY
+  status on the run's target date 2026-09-04; positive control shows the
+  query CAN find bookings — 3 real confirmed non-seed future bookings exist
+  (2026-09-10 Graduation Reels, 09-11 Naming Ceremony Classic, 10-15
+  Birthday Basic). Next real invoice action: ~31 Aug (09-10 booking − 10d),
+  which should produce a `dry_run=false` run with non-empty `invoices_created`.
+
+The daily-invoicing cron is now a real, scheduled, self-reporting job with
+GitHub Actions per-run history + the dashboard staleness flag as the safety
+net. Freeze on the P1 queue can lift.
+
+
+## Calendar loader concurrency fix + cron heartbeat email (June 2026)
+
+Two follow-ups after the P0 closed, both evidence-first.
+
+### Calendar loader "Source _load_X failed" — REAL bug, not cosmetic
+Reproduced (not assumed): firing `/admin/dashboard` + `/admin/calendar`
+concurrently (as the dashboard page does on load) produced
+`RemoteProtocolError: Server disconnected` on **14 of 60** calendar calls,
+with which loader failed varying run to run. Root cause: the single shared
+module-level Supabase client's pooled HTTP connection is reused across
+FastAPI's threadpool; a server-closed keep-alive surfaces as a transient
+disconnect. On a real load ~1 in 4 times a genuine upcoming shoot/invoice
+would silently vanish from the schedule band — a masked data gap.
+
+Fix: `_retry_transient()` wrapper (3 attempts, small backoff) on
+`httpx.TransportError` in both `backend/admin_calendar.py` (per-source loop)
+and `backend/admin_dashboard.py` (`_safe` tile wrapper + both cron-tile
+reads) — reads are idempotent and httpx drops the dead connection, so the
+retry gets a fresh one. Non-transient errors are NOT retried (bubble to the
+existing per-source/per-tile isolation). Verified: **0/60** calendar errors
+and **0/60** dashboard tile errors under the identical concurrent load.
+
+### Cron heartbeat email
+`daily_invoicing.py::_send_heartbeat` sends a one-line outcome email at the
+end of every real (non-dry-run) run to `CRON_HEARTBEAT_TO` (→ CONTACT_TO_EMAIL
+→ ADMIN_EMAIL; unset = skip). Green: `✅ … ran green` + counts; errors:
+`⚠️ … ran with N error(s)` + detail. Best-effort (never blocks the job),
+skipped on dry runs. Layered coverage now: heartbeat (green note each
+morning) + GitHub Actions red-run alerts + dashboard staleness flag.
+Runbook updated with the env var + a "Heartbeat email" section.
+
+Verified: `_send_heartbeat` returns False cleanly with no recipient, True
+(attempts send) with a recipient, handles the error case without crashing.
+Regression: 13/13 `test_daily_invoicing.py` + 14/14 cron auth/staleness tests
+pass. Files: `backend/admin_calendar.py`, `backend/admin_dashboard.py`,
+`backend/daily_invoicing.py`, `docs/BALANCE_INVOICING_RUNBOOK.md`.
+
+
+## Bunny.net Phase 1 — MediaCage Basic DRM design revision (June 2026)
+
+Nathan enabled MediaCage Basic DRM on the Stream library (beyond the original
+spec's static-watermark-only scope). Researched against Bunny's current docs
+and revised `docs/BUNNY_PHASE_1_SPEC.md` — NO code yet (still awaiting the 8
+Railway env vars). Key conclusions:
+- **Player integration unchanged & now mandatory:** MediaCage *requires* the
+  signed embed-iframe + Embed View Token Auth the spec already designed. But
+  it forbids MP4 fallback / direct HLS / third-party players (403), so the
+  legacy `<iframe src={video_url}>` direct path is retired entirely (no
+  fallback; zero legacy deliverables exist anyway).
+- **Protection materially up, traceability still absent:** clear-key
+  session-based encryption defeats common downloaders/rippers (real upgrade),
+  but is not Widevine/PlayReady and gives no per-viewer forensic watermark.
+- **HTML session-code overlay kept as complementary layer** (covers the
+  screen-record vector DRM can't) with honest caveat: it's a parent-page div
+  that vanishes in fullscreen.
+- **Open decision surfaced for Nathan:** endpoint #2 hands the client a raw
+  MP4 download from Storage, bypassing DRM — confirm whether "Download
+  original" stays client-facing or becomes admin-only before build.
+
+**Download policy RESOLVED (Nathan):** "Download original" is client-facing
+but **gated to approved/final deliverables only** (`status IN
+('approved','final_delivered')`). Drafts/in-review are stream-only under DRM
+and never expose the raw MP4 (endpoint #2 returns 409 `not_downloadable_state`
++ logs `entitlement_denied`; frontend hides the button but the server 409 is
+the real enforcement). Deliverable lifecycle confirmed from code:
+`draft → in_review → revisions_requested → approved → final_delivered`.
+Spec + pytest list (test 6b) updated.

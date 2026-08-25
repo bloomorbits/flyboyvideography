@@ -21,9 +21,11 @@ Design notes:
 from __future__ import annotations
 
 import logging
+import time
 from datetime import date, timedelta
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
@@ -31,6 +33,25 @@ from pydantic import BaseModel, Field
 log = logging.getLogger(__name__)
 router = APIRouter()
 _bearer = HTTPBearer(auto_error=False)
+
+# See admin_calendar._retry_transient — the shared Supabase client's pooled
+# connection can surface httpx.RemoteProtocolError under FastAPI's concurrent
+# threadpool. These reads are idempotent, so retry on the dropped connection.
+_TRANSIENT_RETRIES = 3
+_TRANSIENT_BACKOFF_S = 0.05
+
+
+def _retry_transient(fn, *args):
+    last = None
+    for attempt in range(_TRANSIENT_RETRIES):
+        try:
+            return fn(*args)
+        except httpx.TransportError as e:
+            last = e
+            log.warning("transient transport error (attempt %d/%d): %s",
+                        attempt + 1, _TRANSIENT_RETRIES, e)
+            time.sleep(_TRANSIENT_BACKOFF_S * (attempt + 1))
+    raise last
 
 ATTENTION_ITEMS_PER_TILE = 5
 BALANCE_HORIZON_DAYS = 7
@@ -237,7 +258,7 @@ def _tile_cron_last_run(sb) -> Optional[dict]:
     automatically instead of waiting for someone to check.
     """
     try:
-        rows = (
+        rows = _retry_transient(lambda: (
             sb.table("cron_runs")
             .select("id, job_name, started_at, finished_at, summary, error_count, ok")
             .eq("job_name", "daily_invoicing")
@@ -245,7 +266,7 @@ def _tile_cron_last_run(sb) -> Optional[dict]:
             .limit(1)
             .execute()
             .data or []
-        )
+        ))
     except Exception as e:
         msg = str(e).lower()
         if "does not exist" in msg or "pgrst205" in msg or "schema cache" in msg:
@@ -259,7 +280,7 @@ def _tile_cron_last_run(sb) -> Optional[dict]:
     # Last SUCCESSFUL run — the "green row" the staleness check keys off.
     last_ok_at = None
     try:
-        ok_rows = (
+        ok_rows = _retry_transient(lambda: (
             sb.table("cron_runs")
             .select("started_at")
             .eq("job_name", "daily_invoicing")
@@ -268,7 +289,7 @@ def _tile_cron_last_run(sb) -> Optional[dict]:
             .limit(1)
             .execute()
             .data or []
-        )
+        ))
         if ok_rows:
             last_ok_at = ok_rows[0]["started_at"]
     except Exception:
@@ -307,7 +328,7 @@ def get_dashboard(admin=Depends(_require_admin)):
     # dashboard. Each loader is small, so this is cheap safety net.
     def _safe(fn):
         try:
-            return fn(sb)
+            return _retry_transient(fn, sb)
         except Exception as e:
             log.exception("dashboard tile %s failed", fn.__name__)
             return {"count": 0, "items": [], "error": f"{type(e).__name__}: {e}"}

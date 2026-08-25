@@ -33,15 +33,41 @@ Extensibility (documented in the design review):
 from __future__ import annotations
 
 import logging
+import time
 from datetime import date, timedelta
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 log = logging.getLogger(__name__)
 router = APIRouter()
 _bearer = HTTPBearer(auto_error=False)
+
+# The Supabase client is a single shared module-level instance and FastAPI
+# runs sync endpoints in a threadpool, so concurrent requests (e.g. the
+# dashboard firing /admin/dashboard + /admin/calendar together on load)
+# share one pooled HTTP connection. A keep-alive connection the server has
+# closed then surfaces as httpx.RemoteProtocolError ("Server disconnected")
+# intermittently. These loaders are idempotent reads and httpx drops the
+# dead connection on that error, so a short retry gets a fresh one.
+_TRANSIENT_RETRIES = 3
+_TRANSIENT_BACKOFF_S = 0.05
+
+
+def _retry_transient(fn, *args):
+    """Call fn(*args), retrying on transient httpx transport errors."""
+    last = None
+    for attempt in range(_TRANSIENT_RETRIES):
+        try:
+            return fn(*args)
+        except httpx.TransportError as e:
+            last = e
+            log.warning("transient transport error (attempt %d/%d): %s",
+                        attempt + 1, _TRANSIENT_RETRIES, e)
+            time.sleep(_TRANSIENT_BACKOFF_S * (attempt + 1))
+    raise last
 
 
 def _sb():
@@ -229,10 +255,12 @@ def get_calendar(
     events: list[dict] = []
     for source in SOURCES:
         try:
-            events.extend(source(sb, from_, to))
+            events.extend(_retry_transient(source, sb, from_, to))
         except Exception as e:
             # Per-source isolation: a broken loader doesn't take down the
             # whole endpoint. Log loudly and continue with the others.
+            # (Transient transport blips are retried first — see
+            # _retry_transient — so this only fires on a genuine error.)
             log.exception("calendar source %s failed", getattr(source, "__name__", "?"))
             events.append({
                 "kind": "_error",
