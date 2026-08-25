@@ -1008,6 +1008,21 @@ Railway creds + a real uploaded test video GUID + storage object.
 Frontend rework (`DeliverableDetail.js` + `Admin.js`) is phase 2, after
 this backend evidence is green.
 
+### Bunny Phase 1 backend — VERIFIED GREEN (June 2026)
+6/6 real end-to-end checks vs Railway + live Bunny (GUID
+4aa85dae-91ea-4c91-8e65-32f2e52aa9d9, zone `video-deliverables-s3`, region
+`uk`): entitlement 403, state gate draft→409/approved→open, playback-token
+200 + signed embed served by Bunny (200), **real JPEG download HTTP 206
+`ffd8ff`**, webhook bad-sig 401. Config bugs found+fixed along the way (all
+Railway env): S3 endpoint had wrong host + trailing path; zone lacked S3
+compatibility (recreated as `video-deliverables-s3`); region case `DE`→`uk`.
+config-check hint hardened to flag endpoint host/path mistakes.
+Still to prove (in frontend phase / with a real Bunny event, NOT blockers):
+webhook valid-sig 200 (needs a genuine Bunny-fired webhook or the read-only
+key), and in-browser player token enforcement + overlay render.
+NEXT: frontend rework — DeliverableDetail.js (watch/download/overlay) +
+Admin.js (Bunny GUID + storage object fields).
+
 **Download policy RESOLVED (Nathan):** "Download original" is client-facing
 but **gated to approved/final deliverables only** (`status IN
 ('approved','final_delivered')`). Drafts/in-review are stream-only under DRM
