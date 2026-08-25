@@ -74,6 +74,14 @@ def _format_hints(name: str, value: str) -> list[str]:
     if name == "BUNNY_STORAGE_S3_ENDPOINT":
         if not value.startswith("https://"):
             hints.append("expected to start with 'https://'")
+        else:
+            # Must be host-only (no path) — a trailing path segment gets
+            # prepended to the bucket and breaks SigV4 presigning.
+            after = value[len("https://"):]
+            if "/" in after.rstrip("/"):
+                hints.append("must be host-only, no path (e.g. 'https://de-s3.storage.bunnycdn.com')")
+        if value.rstrip("/").endswith(".storage.bunnycdn.com") and "-s3." not in value:
+            hints.append("expected the S3 host '<region>-s3.storage.bunnycdn.com', not the plain storage host")
     if name == "BUNNY_STORAGE_S3_REGION":
         if "/" in value or "." in value or len(value) > 12:
             hints.append("expected a short bare region code (e.g. 'de'), not a URL")
