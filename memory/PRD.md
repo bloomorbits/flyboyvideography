@@ -889,3 +889,23 @@ exit 1; missing SELF_URL → exit 1 (no request). Workflow YAML parses clean.
 
 Once done, re-query `cron_runs` to confirm the real row appears — only then
 is the P0 closed.
+
+### ✅ P0 CLOSED (June 2026) — genuine green scheduled run confirmed
+
+Nathan merged the workflow, added the GH Actions secrets, ran dry-run (green,
+HTTP 200), then ran a real (non-dry-run) pass. Verified against the
+production Supabase (`pnqqmzszasvfnvnnonvd` — Railway writes to the SAME
+project the preview pod queries, so this is real prod evidence):
+- Genuine row `2026-08-25T00:05:17Z` — `ok=true, error_count=0,
+  dry_run=false, summary.date=2026-08-25` (id a37a3902…). Matches the
+  Actions log byte-for-byte. An earlier real row exists at 23:58Z (Aug 24).
+- **Empty result verified correct, not a silent miss:** 0 bookings of ANY
+  status on the run's target date 2026-09-04; positive control shows the
+  query CAN find bookings — 3 real confirmed non-seed future bookings exist
+  (2026-09-10 Graduation Reels, 09-11 Naming Ceremony Classic, 10-15
+  Birthday Basic). Next real invoice action: ~31 Aug (09-10 booking − 10d),
+  which should produce a `dry_run=false` run with non-empty `invoices_created`.
+
+The daily-invoicing cron is now a real, scheduled, self-reporting job with
+GitHub Actions per-run history + the dashboard staleness flag as the safety
+net. Freeze on the P1 queue can lift.
