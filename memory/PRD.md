@@ -969,3 +969,12 @@ Railway env vars). Key conclusions:
 - **Open decision surfaced for Nathan:** endpoint #2 hands the client a raw
   MP4 download from Storage, bypassing DRM — confirm whether "Download
   original" stays client-facing or becomes admin-only before build.
+
+**Download policy RESOLVED (Nathan):** "Download original" is client-facing
+but **gated to approved/final deliverables only** (`status IN
+('approved','final_delivered')`). Drafts/in-review are stream-only under DRM
+and never expose the raw MP4 (endpoint #2 returns 409 `not_downloadable_state`
++ logs `entitlement_denied`; frontend hides the button but the server 409 is
+the real enforcement). Deliverable lifecycle confirmed from code:
+`draft → in_review → revisions_requested → approved → final_delivered`.
+Spec + pytest list (test 6b) updated.
