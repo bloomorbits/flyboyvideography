@@ -947,3 +947,25 @@ Verified: `_send_heartbeat` returns False cleanly with no recipient, True
 Regression: 13/13 `test_daily_invoicing.py` + 14/14 cron auth/staleness tests
 pass. Files: `backend/admin_calendar.py`, `backend/admin_dashboard.py`,
 `backend/daily_invoicing.py`, `docs/BALANCE_INVOICING_RUNBOOK.md`.
+
+
+## Bunny.net Phase 1 — MediaCage Basic DRM design revision (June 2026)
+
+Nathan enabled MediaCage Basic DRM on the Stream library (beyond the original
+spec's static-watermark-only scope). Researched against Bunny's current docs
+and revised `docs/BUNNY_PHASE_1_SPEC.md` — NO code yet (still awaiting the 8
+Railway env vars). Key conclusions:
+- **Player integration unchanged & now mandatory:** MediaCage *requires* the
+  signed embed-iframe + Embed View Token Auth the spec already designed. But
+  it forbids MP4 fallback / direct HLS / third-party players (403), so the
+  legacy `<iframe src={video_url}>` direct path is retired entirely (no
+  fallback; zero legacy deliverables exist anyway).
+- **Protection materially up, traceability still absent:** clear-key
+  session-based encryption defeats common downloaders/rippers (real upgrade),
+  but is not Widevine/PlayReady and gives no per-viewer forensic watermark.
+- **HTML session-code overlay kept as complementary layer** (covers the
+  screen-record vector DRM can't) with honest caveat: it's a parent-page div
+  that vanishes in fullscreen.
+- **Open decision surfaced for Nathan:** endpoint #2 hands the client a raw
+  MP4 download from Storage, bypassing DRM — confirm whether "Download
+  original" stays client-facing or becomes admin-only before build.
