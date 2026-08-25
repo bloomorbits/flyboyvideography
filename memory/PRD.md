@@ -970,6 +970,44 @@ Railway env vars). Key conclusions:
   MP4 download from Storage, bypassing DRM — confirm whether "Download
   original" stays client-facing or becomes admin-only before build.
 
+## Bunny Phase 1 — backend built (June 2026), frontend pending
+
+Gates 1 (env vars reach Railway, verified) + 2 (Migration 015 applied +
+introspected live: columns, CHECK constraints proven by real rejected
+inserts, NOT NULL, RLS anon-isolation) both GREEN. Integration playbook
+pulled via integration_expert — confirmed signing/webhook/S3 algorithms.
+
+Backend built in `backend/bunny.py` (Supabase, not the playbook's Mongo):
+- `GET /api/admin/bunny/config-check` (admin) — presence probe (no values)
+- `POST /api/deliverables/{id}/playback-token` — entitlement guard, 409 if no
+  GUID, signed iframe embed (SHA256(TOKEN_KEY+guid+expires), 30m TTL),
+  per-client-per-day overlay code, logs `playback_url_issued`
+- `POST /api/deliverables/{id}/download-url` — **state gate**: only
+  `approved`/`final_delivered` (else 409 `not_downloadable_state`), then S3
+  SigV4 presign (boto3, path-style, 15m), logs `download_url_issued`
+- `POST /api/deliverables/{id}/play-event` — logs player events, heartbeat
+  rate-limited to 1/30s per (client,deliverable)
+- `POST /api/bunny/webhook` — HMAC-SHA256 verify (read-only key, raw bytes,
+  3 headers), PascalCase payload, status map, orphan-safe, idempotent
+
+Tests `backend/tests/test_bunny.py` — real Supabase + real HTTP, no mocks.
+**7/7 runnable checks PASS locally**: entitlement negative 403 + denial
+logged, missing-GUID 409, download gate draft→409 vs approved→opens,
+webhook bad-sig/missing-headers 401. Against-Bunny-server checks (signing
+HEAD, webhook valid-sig 200, real presigned 200) are SKIP-gated — need the
+Railway creds + a real uploaded test video GUID + storage object.
+
+**To close the remaining real-infra evidence (Nathan prerequisites):**
+1. Deploy backend to Railway (Save to GitHub).
+2. Upload ONE short test clip to the Stream library (also fires a REAL Bunny
+   webhook → proves the webhook end-to-end) + ONE file to Storage; share the
+   video GUID + storage object path.
+3. Re-run test_bunny.py with `BUNNY_TEST_BASE=<railway>` + `TEST_BUNNY_VIDEO_GUID`
+   + `TEST_BUNNY_STORAGE_OBJECT` → real HEAD against iframe.mediadelivery.net,
+   real presigned 200, real webhook landing.
+Frontend rework (`DeliverableDetail.js` + `Admin.js`) is phase 2, after
+this backend evidence is green.
+
 **Download policy RESOLVED (Nathan):** "Download original" is client-facing
 but **gated to approved/final deliverables only** (`status IN
 ('approved','final_delivered')`). Drafts/in-review are stream-only under DRM
