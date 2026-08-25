@@ -22,7 +22,7 @@ CRON_JOB_JWT_SECRET=<64-byte urlsafe token>          # NEW — generate fresh, d
 INVOICE_LEAD_DAYS=10                                  # optional, default 10
 REMINDER_LEAD_DAYS=2                                  # optional, default 2
 PUBLIC_API_BASE=https://<railway>/                    # optional; used for the pay-balance URL in emails. Falls back to REACT_APP_BACKEND_URL.
-CRON_HEARTBEAT_TO=nathan@flyboyvideography.com        # optional; daily heartbeat recipient. Falls back to CONTACT_TO_EMAIL, then ADMIN_EMAIL. Unset = no heartbeat.
+CRON_HEARTBEAT_TO=nathan@flyboyvideography.com        # RECOMMENDED to set explicitly. Fallback chain: CONTACT_TO_EMAIL -> ADMIN_EMAIL -> first of ADMIN_EMAILS. If ALL are unset, no heartbeat is sent (silent). Set this so routing is unambiguous.
 ```
 
 The scheduled cron runs from **GitHub Actions**, not Railway, so `SELF_URL`
@@ -155,8 +155,11 @@ booking never blocks the rest of the batch.
 
 At the end of every real (non-dry-run) invocation, the endpoint sends a
 one-line heartbeat email to `CRON_HEARTBEAT_TO` (falls back to
-`CONTACT_TO_EMAIL`, then `ADMIN_EMAIL`; unset = no heartbeat). Best-effort —
-a Resend outage never blocks or fails the invoicing work.
+`CONTACT_TO_EMAIL`, then `ADMIN_EMAIL`, then the first entry of
+`ADMIN_EMAILS`; if ALL are unset the run logs "no recipient configured" and
+sends nothing). **Set `CRON_HEARTBEAT_TO` explicitly** — the fallbacks are a
+safety net, not a substitute, and a fully-unset chain fails silently.
+Best-effort — a Resend outage never blocks or fails the invoicing work.
 
 - **Green run:** `✅ Flyboy daily invoicing — ran green (YYYY-MM-DD)` with a
   count breakdown (invoices created / reminders sent / settled outside

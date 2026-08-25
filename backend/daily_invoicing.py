@@ -535,6 +535,9 @@ def _send_heartbeat(summary: dict) -> bool:
         os.environ.get("CRON_HEARTBEAT_TO")
         or os.environ.get("CONTACT_TO_EMAIL")
         or os.environ.get("ADMIN_EMAIL")
+        # Last resort: first entry of ADMIN_EMAILS (the admin-bootstrap list).
+        # ADMIN_EMAIL (singular) often isn't set; ADMIN_EMAILS usually is.
+        or (os.environ.get("ADMIN_EMAILS", "").split(",")[0])
         or ""
     ).strip()
     if not to_email:
