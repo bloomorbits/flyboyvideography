@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, CheckCircle2, Circle, Download, ThumbsUp, Undo2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Circle, Download, Play, ThumbsUp, Undo2 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -18,6 +18,10 @@ export default function DeliverableDetail() {
   const [showChanges, setShowChanges] = useState(false);
   const [changeForm, setChangeForm] = useState({ timecode: "", note: "" });
   const [requesting, setRequesting] = useState(false);
+  const [playback, setPlayback] = useState(null); // { embed_url, overlay_code, expires }
+  const [loadingPlay, setLoadingPlay] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const heartbeatRef = useRef(null);
 
   const load = useCallback(async () => {
     const [{ data: d }, { data: c }] = await Promise.all([
@@ -29,6 +33,42 @@ export default function DeliverableDetail() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  const sendPlayEvent = useCallback((event) => {
+    api.post(`/deliverables/${id}/play-event`, { event }).catch(() => {});
+  }, [id]);
+
+  const watchFilm = async () => {
+    setLoadingPlay(true);
+    try {
+      const { data } = await api.post(`/deliverables/${id}/playback-token`);
+      setPlayback(data);
+      sendPlayEvent("play");
+    } catch (err) {
+      toast.error(typeof err.response?.data?.detail === "string" ? err.response.data.detail : "Couldn't start playback");
+    } finally {
+      setLoadingPlay(false);
+    }
+  };
+
+  const downloadOriginal = async () => {
+    setDownloading(true);
+    try {
+      const { data } = await api.post(`/deliverables/${id}/download-url`);
+      window.location.href = data.url;
+    } catch (err) {
+      toast.error(typeof err.response?.data?.detail === "string" ? err.response.data.detail : "Download not available");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // Heartbeat while the player is mounted (best-effort, rate-limited server-side).
+  useEffect(() => {
+    if (!playback) return;
+    heartbeatRef.current = setInterval(() => sendPlayEvent("player_heartbeat"), 30000);
+    return () => clearInterval(heartbeatRef.current);
+  }, [playback, sendPlayEvent]);
 
   const addComment = async (e) => {
     e.preventDefault();
@@ -165,28 +205,55 @@ export default function DeliverableDetail() {
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <Card className="overflow-hidden">
-            {deliv.video_url ? (
-              <div className="aspect-video">
-                <iframe title={deliv.title} src={deliv.video_url} className="h-full w-full" allowFullScreen frameBorder="0" />
+            {playback ? (
+              <div className="relative aspect-video bg-black" data-testid="deliverable-player">
+                <iframe
+                  title={deliv.title}
+                  src={playback.embed_url}
+                  className="h-full w-full"
+                  allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+                  allowFullScreen
+                  frameBorder="0"
+                />
+                {playback.overlay_code && (
+                  <div
+                    data-testid="playback-overlay-code"
+                    className="pointer-events-none absolute right-3 top-3 rounded bg-black/45 px-2.5 py-1 font-mono text-[11px] font-semibold tracking-widest text-white/90 backdrop-blur-sm"
+                  >
+                    {playback.overlay_code}
+                  </div>
+                )}
+              </div>
+            ) : deliv.bunny_video_guid ? (
+              <div className="flex aspect-video flex-col items-center justify-center gap-4 bg-sand" data-testid="deliverable-poster">
+                <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/40">
+                  {deliv.bunny_status && !["Finished", "ResolutionFinished"].includes(deliv.bunny_status)
+                    ? `Preparing your film… (${deliv.bunny_status})`
+                    : "Your film is ready"}
+                </p>
+                <Btn data-testid="watch-film-btn" onClick={watchFilm} disabled={loadingPlay}>
+                  <span className="flex items-center gap-2">
+                    <Play size={15} /> {loadingPlay ? "Loading…" : "Watch film"}
+                  </span>
+                </Btn>
               </div>
             ) : (
               <div className="flex aspect-video items-center justify-center bg-sand">
                 <p className="font-mono text-xs uppercase tracking-[0.3em] text-ink/40">No preview uploaded</p>
               </div>
             )}
-            <div className="flex items-center justify-between border-t border-dune px-6 py-4">
+            <div className="flex items-center justify-between gap-4 border-t border-dune px-6 py-4">
               <p className="text-sm text-ink/60">{deliv.notes || "No editor notes for this cut."}</p>
-              {deliv.final_file_url && (
-                <a
-                  href={deliv.final_file_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  data-testid="final-file-link"
-                  className="flex shrink-0 items-center gap-2 rounded-md bg-[#15803D]/10 px-4 py-2 text-sm font-bold text-[#15803D] hover:bg-[#15803D]/20"
+              {["approved", "final_delivered"].includes(deliv.status) && deliv.bunny_storage_object && (
+                <button
+                  onClick={downloadOriginal}
+                  disabled={downloading}
+                  data-testid="download-original-btn"
+                  className="flex shrink-0 items-center gap-2 rounded-md bg-[#15803D]/10 px-4 py-2 text-sm font-bold text-[#15803D] hover:bg-[#15803D]/20 disabled:opacity-60"
                   style={{ transition: "background-color 0.15s ease" }}
                 >
-                  <Download size={15} /> Final files
-                </a>
+                  <Download size={15} /> {downloading ? "Preparing…" : "Download original"}
+                </button>
               )}
             </div>
           </Card>

@@ -425,6 +425,8 @@ class DeliverableIn(BaseModel):
     final_file_url: Optional[str] = None
     notes: Optional[str] = None
     included_revision_rounds: int = 2
+    bunny_video_guid: Optional[str] = None
+    bunny_storage_object: Optional[str] = None
 
 
 class InvoiceIn(BaseModel):
@@ -445,6 +447,8 @@ class PatchBody(BaseModel):
     final_file_url: Optional[str] = None
     notes: Optional[str] = None
     included_revision_rounds: Optional[int] = None
+    bunny_video_guid: Optional[str] = None
+    bunny_storage_object: Optional[str] = None
 
 
 @app.post("/api/admin/bookings")

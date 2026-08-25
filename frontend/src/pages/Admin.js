@@ -60,7 +60,7 @@ export default function Admin() {
       } else if (tab === "subscription") {
         await api.post("/admin/subscriptions", { client_id: selected, package_name: form.package_name, monthly_price: Number(form.monthly_price || 0), videos_per_month: Number(form.videos_per_month || 1), renews_on: form.renews_on || null });
       } else if (tab === "deliverable") {
-        await api.post("/admin/deliverables", { client_id: selected, title: form.title, booking_id: form.booking_id || null, subscription_id: form.subscription_id || null, status: form.status || "in_review", video_url: form.video_url, version: Number(form.version || 1), included_revision_rounds: Number(form.included_revision_rounds || 2), notes: form.notes });
+        await api.post("/admin/deliverables", { client_id: selected, title: form.title, booking_id: form.booking_id || null, subscription_id: form.subscription_id || null, status: form.status || "in_review", bunny_video_guid: form.bunny_video_guid || null, bunny_storage_object: form.bunny_storage_object || null, version: Number(form.version || 1), included_revision_rounds: Number(form.included_revision_rounds || 2), notes: form.notes });
       } else if (tab === "invoice") {
         await api.post("/admin/invoices", { client_id: selected, source_type: form.source_type, booking_id: form.source_type === "booking" ? form.booking_id : null, subscription_id: form.source_type === "subscription" ? form.subscription_id : null, invoice_number: form.invoice_number, amount: Number(form.amount || 0), status: form.inv_status || "sent", due_on: form.due_on || null });
       }
@@ -197,7 +197,8 @@ export default function Admin() {
                       {subs.map((s) => <option key={s.id} value={s.id}>{s.package_name}</option>)}
                     </select>
                   </div>
-                  <div><Label>Video URL (embed)</Label><Input value={form.video_url || ""} onChange={set("video_url")} placeholder="https://player.vimeo.com/…" /></div>
+                  <div><Label>Bunny Video GUID</Label><Input data-testid="admin-deliv-bunny-guid" value={form.bunny_video_guid || ""} onChange={set("bunny_video_guid")} placeholder="e.g. 4aa85dae-91ea-4c91-8e65-32f2e52aa9d9" /></div>
+                  <div><Label>Bunny Storage Object Path</Label><Input data-testid="admin-deliv-bunny-object" value={form.bunny_storage_object || ""} onChange={set("bunny_storage_object")} placeholder="e.g. final-film.mp4 (for Download original)" /></div>
                   <div><Label>Version</Label><Input type="number" value={form.version || ""} onChange={set("version")} placeholder="1" /></div>
                   <div><Label>Included revision rounds</Label><Input data-testid="admin-deliv-rounds" type="number" value={form.included_revision_rounds || ""} onChange={set("included_revision_rounds")} placeholder="2" /></div>
                   <div className="md:col-span-2"><Label>Notes</Label><Input value={form.notes || ""} onChange={set("notes")} /></div>
@@ -259,6 +260,11 @@ export default function Admin() {
                   </p>
                 </div>
                 <div className="flex items-center gap-4">
+                  {d.bunny_status && (
+                    <span data-testid={`admin-deliv-bunny-status-${i}`} className={`rounded px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest ${d.bunny_status === "Finished" || d.bunny_status === "ResolutionFinished" ? "bg-[#15803D]/15 text-[#15803D]" : d.bunny_status === "Failed" ? "bg-[#B91C1C]/15 text-[#B91C1C]" : "bg-ink/10 text-ink/70"}`}>
+                      {d.bunny_status}
+                    </span>
+                  )}
                   <StatusPill status={d.status} />
                   <select
                     data-testid={`admin-deliv-status-select-${i}`}

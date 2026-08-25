@@ -1033,6 +1033,25 @@ accept-path with a real signature. Header names confirmed correct
 (`x-bunnystream-signature[-version|-algorithm]`, case-insensitive in
 Starlette). BACKEND PHASE FULLY GREEN — ready for frontend.
 
+### Bunny Phase 1 FRONTEND built (June 2026)
+- `Admin.js`: replaced "Video URL" with Bunny Video GUID + Bunny Storage
+  Object Path fields (data-testids admin-deliv-bunny-guid / -object); create
+  body sends them; deliverables list shows a bunny_status badge. Backend
+  DeliverableIn/PatchBody extended with the two fields (create persists, 200).
+- `DeliverableDetail.js`: retired legacy direct iframe. Watch film btn →
+  playback-token → signed embed + overlay-code div (top-right, vanishes in
+  fullscreen per spec); Download original btn only when status ∈
+  (approved,final_delivered) AND bunny_storage_object present → download-url →
+  redirect; play-event "play" + 30s heartbeat.
+- Verified on PREVIEW (UI wiring): poster→Watch→player+overlay (357A-970C),
+  download gated correctly. Real playback needs Railway creds → user eyes-on
+  on DEPLOYED app.
+- Seed verification deliverable in prod DB: id
+  c9c6ce46-3847-4b46-8772-e565d4cb3bf1, client bunny.owner@seed
+  (SeedTest#2026!), approved, GUID 4aa85dae…, object IMG_0197.jpeg.
+- GOTCHA: deployed portal domain MUST be in the Bunny Stream Allowed Domains
+  (embed token referrer check) or in-browser playback is blocked.
+
 **Download policy RESOLVED (Nathan):** "Download original" is client-facing
 but **gated to approved/final deliverables only** (`status IN
 ('approved','final_delivered')`). Drafts/in-review are stream-only under DRM
