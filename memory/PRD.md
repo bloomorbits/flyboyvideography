@@ -909,3 +909,41 @@ project the preview pod queries, so this is real prod evidence):
 The daily-invoicing cron is now a real, scheduled, self-reporting job with
 GitHub Actions per-run history + the dashboard staleness flag as the safety
 net. Freeze on the P1 queue can lift.
+
+
+## Calendar loader concurrency fix + cron heartbeat email (June 2026)
+
+Two follow-ups after the P0 closed, both evidence-first.
+
+### Calendar loader "Source _load_X failed" — REAL bug, not cosmetic
+Reproduced (not assumed): firing `/admin/dashboard` + `/admin/calendar`
+concurrently (as the dashboard page does on load) produced
+`RemoteProtocolError: Server disconnected` on **14 of 60** calendar calls,
+with which loader failed varying run to run. Root cause: the single shared
+module-level Supabase client's pooled HTTP connection is reused across
+FastAPI's threadpool; a server-closed keep-alive surfaces as a transient
+disconnect. On a real load ~1 in 4 times a genuine upcoming shoot/invoice
+would silently vanish from the schedule band — a masked data gap.
+
+Fix: `_retry_transient()` wrapper (3 attempts, small backoff) on
+`httpx.TransportError` in both `backend/admin_calendar.py` (per-source loop)
+and `backend/admin_dashboard.py` (`_safe` tile wrapper + both cron-tile
+reads) — reads are idempotent and httpx drops the dead connection, so the
+retry gets a fresh one. Non-transient errors are NOT retried (bubble to the
+existing per-source/per-tile isolation). Verified: **0/60** calendar errors
+and **0/60** dashboard tile errors under the identical concurrent load.
+
+### Cron heartbeat email
+`daily_invoicing.py::_send_heartbeat` sends a one-line outcome email at the
+end of every real (non-dry-run) run to `CRON_HEARTBEAT_TO` (→ CONTACT_TO_EMAIL
+→ ADMIN_EMAIL; unset = skip). Green: `✅ … ran green` + counts; errors:
+`⚠️ … ran with N error(s)` + detail. Best-effort (never blocks the job),
+skipped on dry runs. Layered coverage now: heartbeat (green note each
+morning) + GitHub Actions red-run alerts + dashboard staleness flag.
+Runbook updated with the env var + a "Heartbeat email" section.
+
+Verified: `_send_heartbeat` returns False cleanly with no recipient, True
+(attempts send) with a recipient, handles the error case without crashing.
+Regression: 13/13 `test_daily_invoicing.py` + 14/14 cron auth/staleness tests
+pass. Files: `backend/admin_calendar.py`, `backend/admin_dashboard.py`,
+`backend/daily_invoicing.py`, `docs/BALANCE_INVOICING_RUNBOOK.md`.

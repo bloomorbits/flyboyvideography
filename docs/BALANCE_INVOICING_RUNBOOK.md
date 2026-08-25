@@ -22,6 +22,7 @@ CRON_JOB_JWT_SECRET=<64-byte urlsafe token>          # NEW — generate fresh, d
 INVOICE_LEAD_DAYS=10                                  # optional, default 10
 REMINDER_LEAD_DAYS=2                                  # optional, default 2
 PUBLIC_API_BASE=https://<railway>/                    # optional; used for the pay-balance URL in emails. Falls back to REACT_APP_BACKEND_URL.
+CRON_HEARTBEAT_TO=nathan@flyboyvideography.com        # optional; daily heartbeat recipient. Falls back to CONTACT_TO_EMAIL, then ADMIN_EMAIL. Unset = no heartbeat.
 ```
 
 The scheduled cron runs from **GitHub Actions**, not Railway, so `SELF_URL`
@@ -149,6 +150,29 @@ The endpoint returns a JSON summary on every call. Monitor these fields:
 
 Errors caught by the endpoint are per-row, not per-endpoint — one bad
 booking never blocks the rest of the batch.
+
+## Heartbeat email (closes the loop on silent failures)
+
+At the end of every real (non-dry-run) invocation, the endpoint sends a
+one-line heartbeat email to `CRON_HEARTBEAT_TO` (falls back to
+`CONTACT_TO_EMAIL`, then `ADMIN_EMAIL`; unset = no heartbeat). Best-effort —
+a Resend outage never blocks or fails the invoicing work.
+
+- **Green run:** `✅ Flyboy daily invoicing — ran green (YYYY-MM-DD)` with a
+  count breakdown (invoices created / reminders sent / settled outside
+  checkout / errors).
+- **Errors:** `⚠️ … ran with N error(s)` + the error detail in the body.
+
+Why this exists: the whole incident that motivated it was a cron failing
+silently for an unknown period. Coverage is now layered:
+1. **Heartbeat email** — a green note arrives each morning; if it stops
+   arriving, that's a signal something's wrong.
+2. **GitHub Actions native alerts** — a failed/red workflow run (endpoint
+   unreachable, non-2xx) emails the repo admins automatically.
+3. **Dashboard staleness flag** — `/admin` shows a red STALE banner if no
+   successful `cron_runs` row landed within `CRON_STALE_HOURS` (default 26h).
+
+Dry-run invocations do NOT send a heartbeat (avoids test noise).
 
 ## Rollback
 
