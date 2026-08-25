@@ -1008,6 +1008,50 @@ Railway creds + a real uploaded test video GUID + storage object.
 Frontend rework (`DeliverableDetail.js` + `Admin.js`) is phase 2, after
 this backend evidence is green.
 
+### Bunny Phase 1 backend — VERIFIED GREEN (June 2026)
+6/6 real end-to-end checks vs Railway + live Bunny (GUID
+4aa85dae-91ea-4c91-8e65-32f2e52aa9d9, zone `video-deliverables-s3`, region
+`uk`): entitlement 403, state gate draft→409/approved→open, playback-token
+200 + signed embed served by Bunny (200), **real JPEG download HTTP 206
+`ffd8ff`**, webhook bad-sig 401. Config bugs found+fixed along the way (all
+Railway env): S3 endpoint had wrong host + trailing path; zone lacked S3
+compatibility (recreated as `video-deliverables-s3`); region case `DE`→`uk`.
+config-check hint hardened to flag endpoint host/path mistakes.
+Still to prove (in frontend phase / with a real Bunny event, NOT blockers):
+webhook valid-sig 200 (needs a genuine Bunny-fired webhook or the read-only
+key), and in-browser player token enforcement + overlay render.
+NEXT: frontend rework — DeliverableDetail.js (watch/download/overlay) +
+Admin.js (Bunny GUID + storage object fields).
+
+### Webhook accept-path PROVEN with real Bunny events (June 2026)
+Set Webhook URL on the Stream library → Railway endpoint. Linked a persistent
+deliverable to a test GUID, triggered a dashboard **re-encode**. Genuine
+Bunny-signed webhooks landed and were verified+applied live:
+`Processing → Encoding → Finished` (HMAC-SHA256 over raw body, header lookup
+case-insensitive, idempotent). This closes the LAST backend item — item #4
+accept-path with a real signature. Header names confirmed correct
+(`x-bunnystream-signature[-version|-algorithm]`, case-insensitive in
+Starlette). BACKEND PHASE FULLY GREEN — ready for frontend.
+
+### Bunny Phase 1 FRONTEND built (June 2026)
+- `Admin.js`: replaced "Video URL" with Bunny Video GUID + Bunny Storage
+  Object Path fields (data-testids admin-deliv-bunny-guid / -object); create
+  body sends them; deliverables list shows a bunny_status badge. Backend
+  DeliverableIn/PatchBody extended with the two fields (create persists, 200).
+- `DeliverableDetail.js`: retired legacy direct iframe. Watch film btn →
+  playback-token → signed embed + overlay-code div (top-right, vanishes in
+  fullscreen per spec); Download original btn only when status ∈
+  (approved,final_delivered) AND bunny_storage_object present → download-url →
+  redirect; play-event "play" + 30s heartbeat.
+- Verified on PREVIEW (UI wiring): poster→Watch→player+overlay (357A-970C),
+  download gated correctly. Real playback needs Railway creds → user eyes-on
+  on DEPLOYED app.
+- Seed verification deliverable in prod DB: id
+  c9c6ce46-3847-4b46-8772-e565d4cb3bf1, client bunny.owner@seed
+  (SeedTest#2026!), approved, GUID 4aa85dae…, object IMG_0197.jpeg.
+- GOTCHA: deployed portal domain MUST be in the Bunny Stream Allowed Domains
+  (embed token referrer check) or in-browser playback is blocked.
+
 **Download policy RESOLVED (Nathan):** "Download original" is client-facing
 but **gated to approved/final deliverables only** (`status IN
 ('approved','final_delivered')`). Drafts/in-review are stream-only under DRM

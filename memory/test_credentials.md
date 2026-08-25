@@ -99,3 +99,14 @@ Supabase project: https://pnqqmzszasvfnvnnonvd.supabase.co (auth + Postgres; NO 
   now follow).
 - Test suite: `ALLOW_ATTACK_SIM=1 SUPABASE_ANON_KEY=<...> pytest -v backend/tests/test_pricing_admin.py`
   21 tests, ~60s runtime.
+
+## Bunny Phase 1 test clients (session — June 2026)
+Two seed clients created for Bunny endpoint testing (is_seed_data=true,
+role=client). Reusable for entitlement/state-gate tests:
+- `bunny.owner@seed.flyboytest.com` / `SeedTest#2026!` — deliverable owner
+- `bunny.other@seed.flyboytest.com` / `SeedTest#2026!` — non-owner (entitlement negative)
+Bunny test asset (real, in prod Bunny): Stream video GUID
+`4aa85dae-91ea-4c91-8e65-32f2e52aa9d9`; Storage object `IMG_0197.jpeg` in
+zone `video-deliverables-s3` (region `uk`). Test scripts:
+`backend/tests/test_bunny.py` (local Supabase-logic) + inline Railway
+black-box runs. Endpoints proven green end-to-end.
