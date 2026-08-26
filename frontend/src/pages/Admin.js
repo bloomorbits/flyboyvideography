@@ -60,6 +60,11 @@ export default function Admin() {
       } else if (tab === "subscription") {
         await api.post("/admin/subscriptions", { client_id: selected, package_name: form.package_name, monthly_price: Number(form.monthly_price || 0), videos_per_month: Number(form.videos_per_month || 1), renews_on: form.renews_on || null });
       } else if (tab === "deliverable") {
+        const obj = (form.bunny_storage_object || "").trim();
+        if (obj && !/\.(mp4|mov|m4v|webm|mkv|avi|m2ts|mts|wmv|flv)$/i.test(obj)) {
+          toast.error("Storage object must be a video file (.mp4, .mov, .m4v, …) — clients download this as their film");
+          return;
+        }
         await api.post("/admin/deliverables", { client_id: selected, title: form.title, booking_id: form.booking_id || null, subscription_id: form.subscription_id || null, status: form.status || "in_review", bunny_video_guid: form.bunny_video_guid || null, bunny_storage_object: form.bunny_storage_object || null, version: Number(form.version || 1), included_revision_rounds: Number(form.included_revision_rounds || 2), notes: form.notes });
       } else if (tab === "invoice") {
         await api.post("/admin/invoices", { client_id: selected, source_type: form.source_type, booking_id: form.source_type === "booking" ? form.booking_id : null, subscription_id: form.source_type === "subscription" ? form.subscription_id : null, invoice_number: form.invoice_number, amount: Number(form.amount || 0), status: form.inv_status || "sent", due_on: form.due_on || null });

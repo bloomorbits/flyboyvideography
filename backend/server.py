@@ -429,6 +429,22 @@ class DeliverableIn(BaseModel):
     bunny_storage_object: Optional[str] = None
 
 
+# Client-facing "Download original" serves the raw Storage object, so it MUST
+# be an actual video file. Enforced server-side (not just in the Admin UI) —
+# same standard as the entitlement guard / state gate.
+VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".m2ts", ".mts", ".wmv", ".flv")
+
+
+def _validate_video_object(obj: Optional[str]):
+    if obj is None:
+        return
+    if not obj.strip().lower().endswith(VIDEO_EXTS):
+        raise HTTPException(
+            422,
+            f"bunny_storage_object must be a video file ({', '.join(VIDEO_EXTS)}) — got '{obj}'",
+        )
+
+
 class InvoiceIn(BaseModel):
     client_id: str
     source_type: str
@@ -465,6 +481,7 @@ def admin_create_subscription(body: SubscriptionIn, admin=Depends(require_admin)
 def admin_create_deliverable(body: DeliverableIn, admin=Depends(require_admin)):
     if not body.booking_id and not body.subscription_id:
         raise HTTPException(422, "Link the deliverable to a booking_id or subscription_id")
+    _validate_video_object(body.bunny_storage_object)
     return sb.table("deliverables").insert(body.model_dump(exclude_none=True)).execute().data[0]
 
 
@@ -485,6 +502,7 @@ def admin_patch_deliverable(deliverable_id: str, body: PatchBody, admin=Depends(
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(422, "Nothing to update")
+    _validate_video_object(updates.get("bunny_storage_object"))
     if updates.get("status") and updates["status"] != "approved":
         updates.update({"approved_by_user_id": None, "approved_by_name": None, "approved_at": None})
     r = sb.table("deliverables").update(updates).eq("id", deliverable_id).execute()
