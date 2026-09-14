@@ -78,16 +78,23 @@ export default function CookieConsent() {
       data-testid="cookie-consent"
       role="dialog"
       aria-label="Cookie consent"
-      className="fixed inset-x-3 bottom-3 z-[60] mx-auto max-w-3xl rounded-xl border border-ink/15 bg-cream/95 p-5 shadow-2xl backdrop-blur-md md:inset-x-6 md:bottom-6 md:p-6"
+      className="fixed inset-x-3 bottom-3 z-[60] mx-auto max-w-3xl rounded-xl border border-ink/15 bg-cream/95 p-4 shadow-2xl backdrop-blur-md md:inset-x-6 md:bottom-6 md:p-6"
     >
-      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-6">
         <div className="text-sm text-ink/85">
-          <p className="font-display text-base font-semibold text-ink">Cookies on this site</p>
-          <p className="mt-1.5 leading-relaxed">
-            We use essential cookies to make this site work. With your permission,
-            we&rsquo;d also like to use analytics cookies to understand how visitors
-            navigate the site so we can improve it. Analytics stay off unless you
-            explicitly opt in.{" "}
+          <p className="font-display text-[15px] font-semibold text-ink md:text-base">Cookies on this site</p>
+          <p className="mt-1 leading-snug md:mt-1.5 md:leading-relaxed">
+            {/* Short copy on phones so the banner stays a slim bottom bar and
+                doesn't cover the hero CTA / first package card; full copy on md+. */}
+            <span className="md:hidden">
+              Essential cookies keep the site working. Analytics stay off unless you opt in.{" "}
+            </span>
+            <span className="hidden md:inline">
+              We use essential cookies to make this site work. With your permission,
+              we&rsquo;d also like to use analytics cookies to understand how visitors
+              navigate the site so we can improve it. Analytics stay off unless you
+              explicitly opt in.{" "}
+            </span>
             <Link
               href="/privacy"
               data-testid="cookie-consent-privacy-link"

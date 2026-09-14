@@ -1060,3 +1060,36 @@ and never expose the raw MP4 (endpoint #2 returns 409 `not_downloadable_state`
 the real enforcement). Deliverable lifecycle confirmed from code:
 `draft → in_review → revisions_requested → approved → final_delivered`.
 Spec + pytest list (test 6b) updated.
+
+## Mobile optimization — CORRECTED & now genuinely covers BOTH surfaces (Sept 2026)
+
+**Prior state was inaccurate.** Earlier status framed "mobile optimization"
+as handled. A first-time 390×844 audit (no prior evidence existed) found:
+- **Marketing site (Next.js): genuinely responsive already** — hamburger nav
+  on every page, no horizontal overflow (`scrollWidth == 390` on `/`, `/book`,
+  `/wedding-videographer-leeds`). The only >viewport element on home is the
+  intentional `marquee-track` (clipped by an `overflow-hidden` parent).
+- **Client portal (CRA): was NOT optimized at all.** `Layout.js` had a fixed
+  `w-60` sidebar + `<main class="ml-60 px-10">` with NO responsive override and
+  NO hamburger. At 390px the sidebar ate 240px and content was clipped:
+  dashboard `scrollWidth=527` (+137px), deliverable detail `scrollWidth=557`
+  (+167px) — the just-shipped Bunny "Watch film" / "Download original" controls
+  were half-cut and portal nav was unreachable on a phone.
+
+**Fix (this session), portal `Layout.js`:** below `md` the sidebar is now a
+slide-in drawer behind a hamburger top-bar (`data-testid` mobile-nav-open /
+-close / -backdrop / portal-sidebar); nav links + backdrop close it; `main` is
+`px-4 pb-10 pt-20 md:ml-60 md:px-10 md:py-10`.
+**After-numbers (re-measured, same method):** dashboard **390 = 390**,
+deliverable detail **390 = 390**. Drawer open/close verified; Bunny playback +
+download controls fully visible on mobile.
+
+**Cookie banner (website `CookieConsent.js`):** was covering the home hero CTA
+and the first `/book` package card on mobile. Now compact on phones (short copy
++ tighter padding); measured banner top=628 vs hero CTA / package heading both
+above it → **overlap: False** on both pages. Full copy retained on md+.
+
+Portal mobile fix is verified via `screenshot_tool` (login as
+bunny.owner@seed.flyboytest.com); marketing site + banner via local Playwright
+against `localhost:3001`. No automated regression test committed for responsive
+layout — verification was measurement + screenshots this pass.

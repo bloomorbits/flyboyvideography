@@ -649,3 +649,29 @@ preview pod.
   - `email_confirm=False` on `admin.create_user` (SEC-002)
 - Concurrency + rate-limit proof: `tests/test_booking_concurrency.py`
   and `tests/sim_calendar_freeze_attack.py`.
+
+
+## Audit-history note — client portal mobile optimization (Sept 2026)
+
+Logged here so a future audit does NOT assume the portal was always
+mobile-fine (it was not), in the same spirit as the incident notes above.
+
+- **Finding:** a first-time 390×844 audit found the CRA client portal was
+  never actually mobile-optimized, despite earlier status implying it was.
+  `frontend/src/components/Layout.js` shipped a fixed `w-60` sidebar +
+  `<main class="ml-60 px-10">` with no responsive override and no hamburger.
+  Measured horizontal overflow at 390px: dashboard `scrollWidth=527`
+  (+137px), deliverable detail `scrollWidth=557` (+167px). The Bunny
+  "Watch film" / "Download original" controls were partially clipped and
+  nav was unreachable on a phone.
+- **Contrast:** the public Next.js marketing site WAS already responsive
+  (hamburger nav, `scrollWidth==390` on `/`, `/book`, SEO page). So the gap
+  was portal-only.
+- **Fix:** slide-in drawer + hamburger below `md`; `main` →
+  `px-4 pb-10 pt-20 md:ml-60 md:px-10 md:py-10`. Cookie banner made compact
+  on mobile so it no longer covered the home hero CTA / first `/book` card.
+- **After-numbers (re-measured):** portal dashboard 390=390, deliverable
+  detail 390=390; banner overlap=False on both pages.
+- **Verification gap to close later:** fix was proven by measurement +
+  screenshots, NOT by a committed automated responsive-layout test. If
+  regression protection is wanted, add a Playwright viewport assertion.

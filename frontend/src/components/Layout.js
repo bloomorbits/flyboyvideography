@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, Clapperboard, Repeat, Film, Receipt, ShieldCheck, ShieldAlert, LogOut, AlertTriangle, UserRound } from "lucide-react";
+import { LayoutDashboard, Clapperboard, Repeat, Film, Receipt, ShieldCheck, ShieldAlert, LogOut, AlertTriangle, UserRound, Menu, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 const links = [
@@ -11,60 +12,82 @@ const links = [
   { to: "/profile", label: "Profile", icon: UserRound, id: "nav-profile" },
 ];
 
+const navLinkClass = ({ isActive }) =>
+  `flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+    isActive ? "bg-ink text-cream" : "text-ink/70 hover:bg-sand hover:text-ink"
+  }`;
+
 export default function Layout() {
   const { profile, session, schemaMissing, signOut } = useAuth();
   const isAdmin = profile?.role === "admin";
+  const [navOpen, setNavOpen] = useState(false);
+  const close = () => setNavOpen(false);
 
   return (
     <div className="relative z-10 flex min-h-screen">
-      <aside className="fixed inset-y-0 left-0 z-20 flex w-60 flex-col border-r border-dune bg-cream">
-        <div className="border-b border-dune px-6 py-7">
-          <p className="font-display text-xl font-bold tracking-tight text-ink">
-            FLYBOY<span className="text-accent">/</span>VIDEO
-          </p>
-          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.3em] text-ink/70">Client Portal</p>
+      {/* Mobile top bar — only below md. Carries the brand + hamburger. */}
+      <header className="fixed inset-x-0 top-0 z-30 flex items-center justify-between border-b border-dune bg-cream px-4 py-3 md:hidden">
+        <p className="font-display text-lg font-bold tracking-tight text-ink">
+          FLYBOY<span className="text-accent">/</span>VIDEO
+        </p>
+        <button
+          onClick={() => setNavOpen(true)}
+          data-testid="mobile-nav-open"
+          aria-label="Open navigation menu"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-dune text-ink transition-colors hover:bg-sand"
+        >
+          <Menu size={20} strokeWidth={2.2} />
+        </button>
+      </header>
+
+      {/* Backdrop when the mobile drawer is open. */}
+      {navOpen && (
+        <div
+          onClick={close}
+          data-testid="mobile-nav-backdrop"
+          aria-hidden
+          className="fixed inset-0 z-30 bg-ink/40 backdrop-blur-sm md:hidden"
+        />
+      )}
+
+      <aside
+        data-testid="portal-sidebar"
+        data-open={navOpen}
+        className={`fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-dune bg-cream transition-transform duration-300 ease-out md:z-20 md:translate-x-0 ${
+          navOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-start justify-between border-b border-dune px-6 py-7">
+          <div>
+            <p className="font-display text-xl font-bold tracking-tight text-ink">
+              FLYBOY<span className="text-accent">/</span>VIDEO
+            </p>
+            <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.3em] text-ink/70">Client Portal</p>
+          </div>
+          <button
+            onClick={close}
+            data-testid="mobile-nav-close"
+            aria-label="Close navigation menu"
+            className="-mr-1 inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink/60 transition-colors hover:bg-sand hover:text-ink md:hidden"
+          >
+            <X size={18} strokeWidth={2.2} />
+          </button>
         </div>
         <nav className="flex-1 space-y-1 px-3 py-6">
           {links.map(({ to, label, icon: Icon, id }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === "/"}
-              data-testid={id}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
-                  isActive ? "bg-ink text-cream" : "text-ink/70 hover:bg-sand hover:text-ink"
-                }`
-              }
-            >
+            <NavLink key={to} to={to} end={to === "/"} data-testid={id} onClick={close} className={navLinkClass}>
               <Icon size={17} strokeWidth={2.2} />
               {label}
             </NavLink>
           ))}
           {isAdmin && (
-            <NavLink
-              to="/admin"
-              data-testid="nav-admin"
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
-                  isActive ? "bg-ink text-cream" : "text-ink/70 hover:bg-sand hover:text-ink"
-                }`
-              }
-            >
+            <NavLink to="/admin" data-testid="nav-admin" onClick={close} className={navLinkClass}>
               <ShieldCheck size={17} strokeWidth={2.2} />
               Admin
             </NavLink>
           )}
           {isAdmin && (
-            <NavLink
-              to="/admin/security"
-              data-testid="nav-admin-security"
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
-                  isActive ? "bg-ink text-cream" : "text-ink/70 hover:bg-sand hover:text-ink"
-                }`
-              }
-            >
+            <NavLink to="/admin/security" data-testid="nav-admin-security" onClick={close} className={navLinkClass}>
               <ShieldAlert size={17} strokeWidth={2.2} />
               Security
             </NavLink>
@@ -84,7 +107,8 @@ export default function Layout() {
           </button>
         </div>
       </aside>
-      <main className="ml-60 flex-1 px-10 py-10">
+
+      <main className="flex-1 px-4 pb-10 pt-20 md:ml-60 md:px-10 md:py-10">
         {schemaMissing && (
           <div data-testid="schema-missing-banner" className="rise mb-8 flex items-start gap-3 rounded-lg border border-[#B45309]/30 bg-[#B45309]/5 p-5">
             <AlertTriangle className="mt-0.5 shrink-0 text-[#B45309]" size={18} />
