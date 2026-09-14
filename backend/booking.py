@@ -99,6 +99,8 @@ _default_origin_allowlist = ",".join([
     "https://flyboyvideography.com",
     "https://www.flyboyvideography.com",
     "https://flyboyvideography.vercel.app",
+    "https://flyboyvideography-portal.vercel.app",
+    "https://app.flyboyvideography.com",
 ])
 ALLOWED_ORIGIN_URLS = {
     o.strip().rstrip("/")

@@ -685,35 +685,51 @@ fixed shell and would FAIL on the before-numbers (527/557 > 390). 4 passed.
 ## Security cleanup — CORS trim + Bunny endpoint rate limiting (Sept 2026)
 
 ### CORS allowlist
-- **Live Railway `CORS_ORIGINS` was ALREADY clean.** Re-ran the 8-origin
-  probe against `https://flyboyvideography-production.up.railway.app/api/health`:
-  only `flyboyvideography.com`, `www.flyboyvideography.com`,
-  `flyboyvideography.vercel.app` echo `Access-Control-Allow-Origin`; the
-  Emergent preview host, `localhost:3001/3000`, `evil.example.com` and a
-  `*.com.evil.com` substring-attack all return NO ACAO header. So the stale
-  preview/localhost entries the audit flagged were NOT in the production
-  CORS env.
-- The stale entries lived in **(a) the preview pod `backend/.env`** and
+- **The true production allowlist is 5 origins, not 3.** The client PORTAL
+  deploys to its own domains, so both `CORS_ORIGINS` and `ALLOWED_ORIGIN_URLS`
+  legitimately contain:
+  `flyboyvideography.com`, `www.flyboyvideography.com`,
+  `flyboyvideography.vercel.app` (marketing) **+**
+  `flyboyvideography-portal.vercel.app`, `app.flyboyvideography.com` (portal).
+- **Live Railway `CORS_ORIGINS` was verified correct** — probed
+  `https://flyboyvideography-production.up.railway.app/api/health`: all 5 legit
+  origins echo `Access-Control-Allow-Origin`; the Emergent preview host,
+  `localhost:3001/3000`, `evil.example.com` and a `*.com.evil.com`
+  substring-attack all return NO ACAO header. The stale preview/localhost
+  entries the audit flagged were NOT in the production env.
+- The stale entries lived only in **(a) the preview pod `backend/.env`** and
   **(b) the `_default_origin_allowlist` fallback in `booking.py`**. Both were
-  trimmed to the 3 production origins this session. Re-ran the same 8-origin
-  probe against `localhost:8001` (direct-to-app — the valid app-layer
-  measurement point; the preview edge masks ACAO to `*` per PL-INFRA-2):
-  3 production origins echo correctly, all 5 stale/hostile origins blocked,
-  OPTIONS preflight from `localhost:3001` on `/api/booking/checkout` → HTTP 400.
-- **STILL ON YOU (cannot read Railway env from here):** confirm Railway's
-  `ALLOWED_ORIGIN_URLS` (the Stripe success/cancel open-redirect allowlist,
-  separate from CORS) contains only the 3 production origins. The code default
-  is now clean, but if that env var is set explicitly on Railway it overrides
-  the default and I can't see its value.
+  cleaned to the 5 legit origins this session (an earlier over-trim to 3 was
+  corrected once the portal domains were confirmed as the 4th/5th entries).
+  8-origin probe against `localhost:8001` (direct-to-app — the valid app-layer
+  point; the preview edge masks ACAO to `*` per PL-INFRA-2): 5 legit origins
+  echo, stale/hostile blocked, OPTIONS preflight from `localhost:3001` on
+  `/api/booking/checkout` → HTTP 400.
+- **RESOLVED:** Railway `ALLOWED_ORIGIN_URLS` confirmed by the owner to be
+  exactly those 5 origins; the repo default now matches. CORS is fully closed.
+  (Minor: the owner's paste had a stray space before one entry — both parsers
+  `.strip()` each item so it's harmless, but worth removing for cleanliness.)
 
 ### Bunny endpoint rate limiting
-- Before: `bunny.py` had entitlement auth but ZERO rate limiting on the
-  client-facing endpoints (audit gap).
-- Added `_bunny_rate_limit_or_429(sb, client)` — DB-backed per-client sliding
-  window (counts the client's rows in `deliverable_access_events` over 60s,
-  cap 60) consistent with the booking limiter's posture. Admins bypass;
-  fail-open on a count error. Applied to **playback-token, download-url,
-  play-event** (webhook is HMAC-gated and out of scope per the request).
-- **Proven** (localhost:8001, seed client `bunny.owner@seed`, deliverable
-  c9c6ce46…): clean client → 200; seeded to cap → **429 with `Retry-After: 60`**
-  on all three endpoints; admin at cap → 200 (bypass). Seed rows cleaned up.
+- Before: `bunny.py` had entitlement auth but ZERO rate limiting (audit gap).
+- **Client endpoints** — added `_bunny_rate_limit_or_429(sb, client)`:
+  DB-backed per-client sliding window (counts the client's rows in
+  `deliverable_access_events` over 60s, cap 60), consistent with the booking
+  limiter's posture. Admins bypass; fail-open on a count error. Applied to
+  **playback-token, download-url, play-event**. Proven (localhost:8001, seed
+  client `bunny.owner@seed`): clean → 200; at-cap → **429 `Retry-After: 60`**
+  on all three; admin at-cap → 200. Seed rows cleaned up.
+- **Public webhook** — added `_WebhookThrottle`, a LAYERED per-IP flood guard
+  evaluated **BEFORE HMAC** so a bad-signature flood can't burn
+  signature-verification CPU. In-process (no DB on a hot public path; single
+  Railway worker), mirroring the booking limiter's shape:
+  concurrent in-flight cap (per-IP 5 / global 50) **and** rolling-window cap
+  (per-IP 60 / global 300 per 60s). Global caps bound a multi-IP attacker.
+- **Attack sim proven** — `backend/tests/sim_bunny_webhook_flood.py` (safe-URL
+  guarded, like the calendar-freeze sim). Real numbers:
+  - A) per-IP window: 65 bad-sig POSTs from one IP → first 60 reach HMAC
+    (401), **first 429 at attempt #61**, 5 rejected before HMAC (CPU averted).
+  - B) global backstop: new spoofed IP per request → **first global 429 at
+    attempt #241** (300 cap minus the ~60 still in-window from A).
+  - C) concurrent per-IP cap: acquiring 7 slots without release → 5 admitted,
+    **2 rejected (429)**.

@@ -1101,13 +1101,19 @@ layout — verification was measurement + screenshots this pass.
   `/deliverables`, deliverable-detail + drawer open/close. 4 passed; proven to
   fail on the old before-numbers. Run: `pytest frontend/e2e/test_portal_responsive.py`
   (needs `playwright install chromium`). Closes the "nothing was checking it" gap.
-- **CORS:** trimmed stale preview/localhost from preview `backend/.env`
-  (`CORS_ORIGINS`, `ALLOWED_ORIGIN_URLS`) + the `_default_origin_allowlist`
-  fallback in `booking.py`. 8-origin probe on `localhost:8001`: 3 prod origins
-  allowed, 5 stale/hostile blocked, preflight → 400. **Railway's live
-  `CORS_ORIGINS` was already clean** (verified against production). User still
-  to confirm Railway `ALLOWED_ORIGIN_URLS` env (unreadable from here).
-- **Bunny rate limiting:** added DB-backed per-client throttle (60/60s, admin
-  bypass, fail-open) to playback-token / download-url / play-event. Proven:
-  clean→200, at-cap→429 (Retry-After:60) on all three, admin-at-cap→200.
+- **CORS:** the true production allowlist is **5 origins** (3 marketing +
+  2 portal: `flyboyvideography-portal.vercel.app`, `app.flyboyvideography.com`).
+  Cleaned stale preview/localhost from preview `backend/.env`
+  (`CORS_ORIGINS`, `ALLOWED_ORIGIN_URLS`) + the `_default_origin_allowlist` in
+  `booking.py`, set to the 5 legit origins. 8-origin probe on `localhost:8001`:
+  5 legit allowed, stale/hostile blocked, preflight → 400. **Railway CORS_ORIGINS
+  + ALLOWED_ORIGIN_URLS verified/confirmed = the same 5.** Fully closed.
+- **Bunny client rate limiting:** DB-backed per-client throttle (60/60s, admin
+  bypass, fail-open) on playback-token / download-url / play-event. Proven:
+  clean→200, at-cap→429 (Retry-After:60) all three, admin→200.
+- **Bunny webhook flood guard:** `_WebhookThrottle` — layered per-IP
+  (concurrent 5/50 + rolling-window 60/300 per 60s), evaluated BEFORE HMAC so a
+  bad-sig flood can't burn CPU. Attack sim `tests/sim_bunny_webhook_flood.py`:
+  first 429 at #61 (per-IP), global backstop at #241, concurrent cap rejects
+  6th/7th slot. All scenarios pass.
 - Details + evidence in `docs/CREDENTIAL_ROTATION.md`.

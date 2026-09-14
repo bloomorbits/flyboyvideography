@@ -17,6 +17,9 @@ import hashlib
 import hmac
 import logging
 import os
+import threading
+import time
+from collections import defaultdict, deque
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -410,6 +413,95 @@ def play_event(deliverable_id: str, body: PlayEventBody,
 # 4. Webhook receiver
 # ============================================================================
 
+# --- Public-endpoint flood guard -------------------------------------------
+# The webhook is public (only HMAC-gated). A flood of bad-signature POSTs
+# would otherwise burn signature-verification CPU on every request. This
+# guard is evaluated BEFORE _verify_webhook so rejected floods never reach
+# the HMAC path. It mirrors the booking limiter's *layered* shape — a
+# concurrent in-flight cap AND a rolling-window cap, each per-IP with a
+# global backstop — but is IN-PROCESS (no DB round-trip on a hot public
+# path; single uvicorn worker on Railway). A multi-IP attacker is bounded by
+# the GLOBAL caps. Tune via the constants below.
+WH_WINDOW_SECONDS = 60
+WH_MAX_PER_IP = 60          # rolling-window cap, per IP (per WH_WINDOW_SECONDS)
+WH_MAX_GLOBAL = 300         # rolling-window cap, system-wide
+WH_CONCURRENT_PER_IP = 5    # in-flight cap, per IP
+WH_CONCURRENT_GLOBAL = 50   # in-flight cap, system-wide
+
+_wh_lock = threading.Lock()
+_wh_win_ip: dict[str, deque] = defaultdict(deque)   # ip -> deque[monotonic ts]
+_wh_win_global: deque = deque()
+_wh_inflight_ip: dict[str, int] = defaultdict(int)
+_wh_inflight_total = [0]
+
+
+def _wh_client_ip(request: Request) -> str:
+    """IP extraction for the webhook throttle. Same trust order as
+    booking._client_ip (see PL-INFRA-1 in CREDENTIAL_ROTATION.md): Railway's
+    edge sets X-Real-IP and strips client-supplied forwarding headers."""
+    real_ip = (request.headers.get("x-real-ip") or "").strip()
+    if real_ip:
+        return real_ip
+    xff = request.headers.get("x-forwarded-for") or ""
+    if xff:
+        return xff.split(",")[0].strip() or (request.client.host if request.client else "unknown")
+    return request.client.host if request.client else "unknown"
+
+
+def _wh_reject():
+    raise HTTPException(
+        status_code=429,
+        detail="Too many webhook requests.",
+        headers={"Retry-After": str(WH_WINDOW_SECONDS)},
+    )
+
+
+class _WebhookThrottle:
+    """Layered per-IP flood guard (concurrent + rolling-window, global backstops).
+    acquire() raises 429 if any cap is exceeded; release() frees the in-flight
+    slot. Rejection happens BEFORE HMAC verification."""
+
+    def __init__(self, ip: str):
+        self.ip = ip
+        self._held = False
+
+    def acquire(self):
+        now = time.monotonic()
+        cutoff = now - WH_WINDOW_SECONDS
+        with _wh_lock:
+            wq = _wh_win_ip[self.ip]
+            while wq and wq[0] < cutoff:
+                wq.popleft()
+            while _wh_win_global and _wh_win_global[0] < cutoff:
+                _wh_win_global.popleft()
+            # rolling-window caps
+            if len(wq) >= WH_MAX_PER_IP:
+                _wh_reject()
+            if len(_wh_win_global) >= WH_MAX_GLOBAL:
+                _wh_reject()
+            # concurrent in-flight caps
+            if _wh_inflight_ip[self.ip] >= WH_CONCURRENT_PER_IP:
+                _wh_reject()
+            if _wh_inflight_total[0] >= WH_CONCURRENT_GLOBAL:
+                _wh_reject()
+            # admit
+            wq.append(now)
+            _wh_win_global.append(now)
+            _wh_inflight_ip[self.ip] += 1
+            _wh_inflight_total[0] += 1
+            self._held = True
+
+    def release(self):
+        if not self._held:
+            return
+        with _wh_lock:
+            _wh_inflight_ip[self.ip] -= 1
+            if _wh_inflight_ip[self.ip] <= 0:
+                _wh_inflight_ip.pop(self.ip, None)
+            _wh_inflight_total[0] -= 1
+            self._held = False
+
+
 def _verify_webhook(raw_body: bytes, request: Request) -> bool:
     version = request.headers.get("X-BunnyStream-Signature-Version")
     algorithm = request.headers.get("X-BunnyStream-Signature-Algorithm")
@@ -426,34 +518,42 @@ def _verify_webhook(raw_body: bytes, request: Request) -> bool:
 
 @router.post("/api/bunny/webhook")
 async def bunny_webhook(request: Request):
-    raw_body = await request.body()
-    if not _verify_webhook(raw_body, request):
-        raise HTTPException(401, "Invalid Bunny Stream signature")
-
-    import json as _json
+    # Flood guard BEFORE HMAC — a bad-signature flood must not burn
+    # signature-verification CPU. Layered per-IP (concurrent + rolling window)
+    # with global backstops; see _WebhookThrottle.
+    throttle = _WebhookThrottle(_wh_client_ip(request))
+    throttle.acquire()
     try:
-        payload = _json.loads(raw_body)
-    except ValueError:
-        raise HTTPException(400, "Invalid JSON")
+        raw_body = await request.body()
+        if not _verify_webhook(raw_body, request):
+            raise HTTPException(401, "Invalid Bunny Stream signature")
 
-    for k in ("VideoLibraryId", "VideoGuid", "Status"):
-        if k not in payload:
-            raise HTTPException(400, "Missing webhook fields")
+        import json as _json
+        try:
+            payload = _json.loads(raw_body)
+        except ValueError:
+            raise HTTPException(400, "Invalid JSON")
 
-    if STREAM_LIBRARY_ID and str(payload["VideoLibraryId"]) != str(STREAM_LIBRARY_ID):
-        raise HTTPException(401, "Wrong Stream library")
+        for k in ("VideoLibraryId", "VideoGuid", "Status"):
+            if k not in payload:
+                raise HTTPException(400, "Missing webhook fields")
 
-    guid = str(payload["VideoGuid"])
-    status_int = int(payload["Status"])
-    status_name = STREAM_STATUS_NAMES.get(status_int, f"Unknown({status_int})")
+        if STREAM_LIBRARY_ID and str(payload["VideoLibraryId"]) != str(STREAM_LIBRARY_ID):
+            raise HTTPException(401, "Wrong Stream library")
 
-    sb = _sb()
-    rows = sb.table("deliverables").select("id").eq("bunny_video_guid", guid).execute().data or []
-    if not rows:
-        # Orphan Bunny video (not linked to a deliverable) — fine, not ours.
-        log.info("bunny webhook: no deliverable for guid %s (status %s)", guid, status_name)
-        return {"ok": True, "matched": False}
+        guid = str(payload["VideoGuid"])
+        status_int = int(payload["Status"])
+        status_name = STREAM_STATUS_NAMES.get(status_int, f"Unknown({status_int})")
 
-    for d in rows:
-        sb.table("deliverables").update({"bunny_status": status_name}).eq("id", d["id"]).execute()
-    return {"ok": True, "matched": True, "status": status_name}
+        sb = _sb()
+        rows = sb.table("deliverables").select("id").eq("bunny_video_guid", guid).execute().data or []
+        if not rows:
+            # Orphan Bunny video (not linked to a deliverable) — fine, not ours.
+            log.info("bunny webhook: no deliverable for guid %s (status %s)", guid, status_name)
+            return {"ok": True, "matched": False}
+
+        for d in rows:
+            sb.table("deliverables").update({"bunny_status": status_name}).eq("id", d["id"]).execute()
+        return {"ok": True, "matched": True, "status": status_name}
+    finally:
+        throttle.release()
