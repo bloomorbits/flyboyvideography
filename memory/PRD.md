@@ -1093,3 +1093,21 @@ Portal mobile fix is verified via `screenshot_tool` (login as
 bunny.owner@seed.flyboytest.com); marketing site + banner via local Playwright
 against `localhost:3001`. No automated regression test committed for responsive
 layout — verification was measurement + screenshots this pass.
+
+## Security cleanup + responsive guard (Sept 2026)
+
+- **Responsive guard test:** `frontend/e2e/test_portal_responsive.py`
+  (Playwright 390×844) now asserts zero horizontal overflow on `/`,
+  `/deliverables`, deliverable-detail + drawer open/close. 4 passed; proven to
+  fail on the old before-numbers. Run: `pytest frontend/e2e/test_portal_responsive.py`
+  (needs `playwright install chromium`). Closes the "nothing was checking it" gap.
+- **CORS:** trimmed stale preview/localhost from preview `backend/.env`
+  (`CORS_ORIGINS`, `ALLOWED_ORIGIN_URLS`) + the `_default_origin_allowlist`
+  fallback in `booking.py`. 8-origin probe on `localhost:8001`: 3 prod origins
+  allowed, 5 stale/hostile blocked, preflight → 400. **Railway's live
+  `CORS_ORIGINS` was already clean** (verified against production). User still
+  to confirm Railway `ALLOWED_ORIGIN_URLS` env (unreadable from here).
+- **Bunny rate limiting:** added DB-backed per-client throttle (60/60s, admin
+  bypass, fail-open) to playback-token / download-url / play-event. Proven:
+  clean→200, at-cap→429 (Retry-After:60) on all three, admin-at-cap→200.
+- Details + evidence in `docs/CREDENTIAL_ROTATION.md`.

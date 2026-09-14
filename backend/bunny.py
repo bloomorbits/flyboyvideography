@@ -158,6 +158,14 @@ PLAY_EVENT_MAP = {
 }
 HEARTBEAT_MIN_INTERVAL_S = 30
 
+# Per-client throttle for the client-facing Bunny endpoints (playback-token,
+# download-url, play-event). Counts this client's rows in
+# deliverable_access_events over a short sliding window — a DB-backed,
+# cross-worker posture consistent with the booking rate limiter
+# (booking.py). Admins bypass; fail-open on a count error.
+BUNNY_RL_WINDOW_SECONDS = 60
+BUNNY_RL_MAX_PER_CLIENT = 60
+
 
 # ============================================================================
 # Auth + entitlement
@@ -199,6 +207,36 @@ def _entitled_or_403(sb, deliverable: dict, client: dict):
                    "entitlement_denied", {"reason": "not_owner"})
         raise HTTPException(403, "Not your deliverable")
     return "client"
+
+
+def _bunny_rate_limit_or_429(sb, client: dict) -> None:
+    """Throttle a single client hammering the Bunny endpoints. Counts this
+    client's access-event rows in the last BUNNY_RL_WINDOW_SECONDS; at/over
+    the cap → 429. Admins bypass. Fail-OPEN on a count error so a transient
+    DB blip never blocks a legitimate viewer."""
+    if client.get("role") == "admin":
+        return
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=BUNNY_RL_WINDOW_SECONDS)).isoformat()
+    try:
+        r = (
+            sb.table("deliverable_access_events")
+            .select("id", count="exact")
+            .eq("client_id", client["id"])
+            .gte("created_at", cutoff)
+            .execute()
+        )
+        count = r.count or 0
+    except Exception as e:
+        log.warning("bunny rate-limit count failed (fail-open): %s", e)
+        return
+    if count >= BUNNY_RL_MAX_PER_CLIENT:
+        log.warning("bunny RL_429 client=%s count=%s window=%ss",
+                    client["id"], count, BUNNY_RL_WINDOW_SECONDS)
+        raise HTTPException(
+            status_code=429,
+            detail="Too many playback requests. Please wait a moment and try again.",
+            headers={"Retry-After": str(BUNNY_RL_WINDOW_SECONDS)},
+        )
 
 
 # ============================================================================
@@ -269,6 +307,7 @@ def _s3():
 def playback_token(deliverable_id: str, creds: HTTPAuthorizationCredentials = Depends(_bearer)):
     client = _authed_client(creds)
     sb = _sb()
+    _bunny_rate_limit_or_429(sb, client)
     deliverable = _load_deliverable(sb, deliverable_id)
     actor_role = _entitled_or_403(sb, deliverable, client)
 
@@ -292,6 +331,7 @@ def playback_token(deliverable_id: str, creds: HTTPAuthorizationCredentials = De
 def download_url(deliverable_id: str, creds: HTTPAuthorizationCredentials = Depends(_bearer)):
     client = _authed_client(creds)
     sb = _sb()
+    _bunny_rate_limit_or_429(sb, client)
     deliverable = _load_deliverable(sb, deliverable_id)
     actor_role = _entitled_or_403(sb, deliverable, client)
 
@@ -334,6 +374,7 @@ def play_event(deliverable_id: str, body: PlayEventBody,
                creds: HTTPAuthorizationCredentials = Depends(_bearer)):
     client = _authed_client(creds)
     sb = _sb()
+    _bunny_rate_limit_or_429(sb, client)
     deliverable = _load_deliverable(sb, deliverable_id)
     actor_role = _entitled_or_403(sb, deliverable, client)
 

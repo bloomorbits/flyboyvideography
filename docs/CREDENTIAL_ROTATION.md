@@ -675,3 +675,45 @@ mobile-fine (it was not), in the same spirit as the incident notes above.
 - **Verification gap to close later:** fix was proven by measurement +
   screenshots, NOT by a committed automated responsive-layout test. If
   regression protection is wanted, add a Playwright viewport assertion.
+
+**UPDATE (same session):** the regression guard was added —
+`frontend/e2e/test_portal_responsive.py` (Playwright, viewport 390×844).
+Asserts `scrollWidth <= clientWidth+1` on `/`, `/deliverables`, and the
+deliverable-detail page, plus drawer open/close. Verified it PASSES on the
+fixed shell and would FAIL on the before-numbers (527/557 > 390). 4 passed.
+
+## Security cleanup — CORS trim + Bunny endpoint rate limiting (Sept 2026)
+
+### CORS allowlist
+- **Live Railway `CORS_ORIGINS` was ALREADY clean.** Re-ran the 8-origin
+  probe against `https://flyboyvideography-production.up.railway.app/api/health`:
+  only `flyboyvideography.com`, `www.flyboyvideography.com`,
+  `flyboyvideography.vercel.app` echo `Access-Control-Allow-Origin`; the
+  Emergent preview host, `localhost:3001/3000`, `evil.example.com` and a
+  `*.com.evil.com` substring-attack all return NO ACAO header. So the stale
+  preview/localhost entries the audit flagged were NOT in the production
+  CORS env.
+- The stale entries lived in **(a) the preview pod `backend/.env`** and
+  **(b) the `_default_origin_allowlist` fallback in `booking.py`**. Both were
+  trimmed to the 3 production origins this session. Re-ran the same 8-origin
+  probe against `localhost:8001` (direct-to-app — the valid app-layer
+  measurement point; the preview edge masks ACAO to `*` per PL-INFRA-2):
+  3 production origins echo correctly, all 5 stale/hostile origins blocked,
+  OPTIONS preflight from `localhost:3001` on `/api/booking/checkout` → HTTP 400.
+- **STILL ON YOU (cannot read Railway env from here):** confirm Railway's
+  `ALLOWED_ORIGIN_URLS` (the Stripe success/cancel open-redirect allowlist,
+  separate from CORS) contains only the 3 production origins. The code default
+  is now clean, but if that env var is set explicitly on Railway it overrides
+  the default and I can't see its value.
+
+### Bunny endpoint rate limiting
+- Before: `bunny.py` had entitlement auth but ZERO rate limiting on the
+  client-facing endpoints (audit gap).
+- Added `_bunny_rate_limit_or_429(sb, client)` — DB-backed per-client sliding
+  window (counts the client's rows in `deliverable_access_events` over 60s,
+  cap 60) consistent with the booking limiter's posture. Admins bypass;
+  fail-open on a count error. Applied to **playback-token, download-url,
+  play-event** (webhook is HMAC-gated and out of scope per the request).
+- **Proven** (localhost:8001, seed client `bunny.owner@seed`, deliverable
+  c9c6ce46…): clean client → 200; seeded to cap → **429 with `Retry-After: 60`**
+  on all three endpoints; admin at cap → 200 (bypass). Seed rows cleaned up.
