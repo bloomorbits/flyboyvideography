@@ -1060,3 +1060,176 @@ and never expose the raw MP4 (endpoint #2 returns 409 `not_downloadable_state`
 the real enforcement). Deliverable lifecycle confirmed from code:
 `draft → in_review → revisions_requested → approved → final_delivered`.
 Spec + pytest list (test 6b) updated.
+
+## Mobile optimization — CORRECTED & now genuinely covers BOTH surfaces (Sept 2026)
+
+**Prior state was inaccurate.** Earlier status framed "mobile optimization"
+as handled. A first-time 390×844 audit (no prior evidence existed) found:
+- **Marketing site (Next.js): genuinely responsive already** — hamburger nav
+  on every page, no horizontal overflow (`scrollWidth == 390` on `/`, `/book`,
+  `/wedding-videographer-leeds`). The only >viewport element on home is the
+  intentional `marquee-track` (clipped by an `overflow-hidden` parent).
+- **Client portal (CRA): was NOT optimized at all.** `Layout.js` had a fixed
+  `w-60` sidebar + `<main class="ml-60 px-10">` with NO responsive override and
+  NO hamburger. At 390px the sidebar ate 240px and content was clipped:
+  dashboard `scrollWidth=527` (+137px), deliverable detail `scrollWidth=557`
+  (+167px) — the just-shipped Bunny "Watch film" / "Download original" controls
+  were half-cut and portal nav was unreachable on a phone.
+
+**Fix (this session), portal `Layout.js`:** below `md` the sidebar is now a
+slide-in drawer behind a hamburger top-bar (`data-testid` mobile-nav-open /
+-close / -backdrop / portal-sidebar); nav links + backdrop close it; `main` is
+`px-4 pb-10 pt-20 md:ml-60 md:px-10 md:py-10`.
+**After-numbers (re-measured, same method):** dashboard **390 = 390**,
+deliverable detail **390 = 390**. Drawer open/close verified; Bunny playback +
+download controls fully visible on mobile.
+
+**Cookie banner (website `CookieConsent.js`):** was covering the home hero CTA
+and the first `/book` package card on mobile. Now compact on phones (short copy
++ tighter padding); measured banner top=628 vs hero CTA / package heading both
+above it → **overlap: False** on both pages. Full copy retained on md+.
+
+Portal mobile fix is verified via `screenshot_tool` (login as
+bunny.owner@seed.flyboytest.com); marketing site + banner via local Playwright
+against `localhost:3001`. No automated regression test committed for responsive
+layout — verification was measurement + screenshots this pass.
+
+## Security cleanup + responsive guard (Sept 2026)
+
+- **Responsive guard test:** `frontend/e2e/test_portal_responsive.py`
+  (Playwright 390×844) now asserts zero horizontal overflow on `/`,
+  `/deliverables`, deliverable-detail + drawer open/close. 4 passed; proven to
+  fail on the old before-numbers. Run: `pytest frontend/e2e/test_portal_responsive.py`
+  (needs `playwright install chromium`). Closes the "nothing was checking it" gap.
+- **CORS:** the true production allowlist is **5 origins** (3 marketing +
+  2 portal: `flyboyvideography-portal.vercel.app`, `app.flyboyvideography.com`).
+  Cleaned stale preview/localhost from preview `backend/.env`
+  (`CORS_ORIGINS`, `ALLOWED_ORIGIN_URLS`) + the `_default_origin_allowlist` in
+  `booking.py`, set to the 5 legit origins. 8-origin probe on `localhost:8001`:
+  5 legit allowed, stale/hostile blocked, preflight → 400. **Railway CORS_ORIGINS
+  + ALLOWED_ORIGIN_URLS verified/confirmed = the same 5.** Fully closed.
+- **Bunny client rate limiting:** DB-backed per-client throttle (60/60s, admin
+  bypass, fail-open) on playback-token / download-url / play-event. Proven:
+  clean→200, at-cap→429 (Retry-After:60) all three, admin→200.
+- **Bunny webhook flood guard:** `_WebhookThrottle` — layered per-IP
+  (concurrent 5/50 + rolling-window 60/300 per 60s), evaluated BEFORE HMAC so a
+  bad-sig flood can't burn CPU. Attack sim `tests/sim_bunny_webhook_flood.py`:
+  first 429 at #61 (per-IP), global backstop at #241, concurrent cap rejects
+  6th/7th slot. All scenarios pass.
+- Details + evidence in `docs/CREDENTIAL_ROTATION.md`.
+
+## Access-event retention + webhook multi-worker note + test-suite repair (Sept 2026)
+
+- **deliverable_access_events retention:** the daily cron
+  (`daily_invoicing.run_daily_invoicing`) now purges rows older than
+  `ACCESS_EVENT_RETENTION_DAYS` (default 90) so the audit/rate-limit table
+  stays bounded. Skipped on dry runs; best-effort (never blocks invoicing).
+  Verified: seeded 2 old + 1 recent → purge deleted the 2 old, kept recent.
+- **Webhook throttle multi-worker caveat:** documented in
+  CREDENTIAL_ROTATION.md — `_WebhookThrottle` is in-process; if the service
+  is ever scaled to multiple workers/replicas the global caps must move to a
+  shared Postgres store (booking-limiter pattern) or the effective limit
+  multiplies per worker. Single-worker deploy is correct today.
+- **Test-suite repair — `pytest backend/tests/` now FULLY GREEN (83 passed,
+  0 failed, 0 errors).** Fixes:
+  - `test_revision_rounds.py` — rewritten hermetic on the durable
+    `bunny.owner@seed` client (old demo-client seed was purged); 3 passed.
+  - `test_booking_flow.py` — added the Migration-010 `tc_accepted` consent
+    field to the checkout payload; 9 passed.
+  - `test_pricing_admin.py` — the failing cancelled-tier test's root cause was
+    a REAL confirmed customer booking on `wedding/Basic` (guard working
+    correctly); rewrote it hermetic on a synthetic run-unique tier. ALSO fixed
+    `orphan_ref_ctx` hardcoding `event_date = today+30`, which collided with
+    the `bookings_one_confirmed_per_date` unique index in full runs → now a
+    unique far-future per-test date. 21 passed.
+  - **Quarantine:** moved 5 superseded/legacy files
+    (`backend_test.py`, `iteration3/4/5_test.py`, script-style `test_bunny.py`)
+    to `backend/tests/legacy/` (README explains why), excluded from the
+    default run via `/app/pytest.ini` `norecursedirs = legacy`. They depended
+    on purged demo-seed data and are superseded by the maintained suites.
+
+## Portfolio (Migration 016) — BUILT & VERIFIED (Sept 2026)
+
+- Admin-editable YouTube portfolio replacing the hardcoded Pexels array.
+- **Migration 016 applied + adversarially verified** (live): 12 columns match
+  spec; `youtube_video_id` CHECK rejects non-11-char (23514); `category` CHECK
+  rejects out-of-set (23514); active-only RLS genuinely hides inactive rows
+  from anon; `updated_at` trigger fires on UPDATE.
+- **Backend `backend/portfolio.py`** (mounted in server.py): public
+  `GET /api/portfolio` (active rows, table-missing → graceful empty); admin
+  CRUD `GET/POST/PATCH/DELETE /api/admin/portfolio/*` (require_admin). Server
+  normalizes URL→11-char id + 422 on bad input (mirrors Bunny guard); no-key
+  YouTube **oEmbed** auto-fills real title + thumbnail on save and rejects
+  unavailable/unembeddable videos (422). Verified end-to-end: create via URL &
+  bare id (oEmbed real titles), 422 on bad id/category/fake, RLS active-only
+  public read, toggle/reorder/replace/delete.
+- **Admin UI `frontend/src/pages/AdminPortfolio.js`** at `/admin/portfolio`
+  (dark theme like AdminPricing), added to the admin sub-nav alongside Pricing.
+  Paste URL/ID per category, display order, active toggle, delete; empty
+  categories show a placeholder note. Verified via screenshot.
+- **Public `website/app/portfolio/page.js`** (ISR 60s) fetches `/api/portfolio`,
+  builds per-category tiles: real videos → click-to-play YouTube embeds (no
+  ribbon) with **VideoObject JSON-LD** from real metadata; categories with zero
+  active videos keep the honest ribboned placeholder tiles. Adaptive
+  transparency banner (real-only / mixed / placeholder-only). `PortfolioGrid.js`
+  rewritten to accept tiles + facade playback. Verified: SSR embedUrl +
+  VideoObject present, ribbon fallback correct (weddings real → 12 placeholders
+  remain), click→iframe loads real embed, no ribbon on real tiles.
+- Test seed video created + removed; production table left EMPTY (0 rows →
+  placeholders), no test data leaked.
+
+## Enquiry Auto-Ack + SEO page #4 (Sept 2026)
+
+- **Enquiry Auto-Ack (built + verified):** `/api/contact/enquire` now sends a
+  warm auto-reply to the visitor via Resend, best-effort, immediately after the
+  contact_enquiries row is written. Templates `backend/emails/enquiry_auto_ack.
+  {html,txt}` match booking_confirmation voice; From=RESEND_FROM_EMAIL,
+  Reply-To=CONTACT_TO_EMAIL (studio inbox); event-date line only rendered when a
+  date is given. Naturally rate-limited by the existing contact_attempts ledger
+  (runs after the limiter passes) → not a new spam vector. VERIFIED: real send
+  returned Resend HTTP 200, id 81c3334b… (to the studio inbox test). Copy was
+  drafted + shown before wiring, per the review gate. Test enquiry row cleaned up.
+- **SEO landing page #4 (built):** `/birthday-videographer-leeds` — chosen from
+  Priority-1 as the highest-intent gap (Birthday is fully priced £250/£400 MOST
+  POPULAR/£700 with complete deliverables, in the anchor city Leeds; we already
+  had wedding+naming Leeds but no birthday). Uses the shared SEOLandingPage +
+  buildSeoMetadata, mirrors the 3 live pages exactly; inline link /services#birthday
+  (valid — services sections use id={pkg.id}). Renders 200.
+- **Sitemap + robots (built + verified, Sept 2026):** `app/sitemap.js` → `/sitemap.xml`
+  (10 URLs: home, services, portfolio, book, contact, faq + all 4 SEO landing pages,
+  all canonical https://flyboyvideography.com) and `app/robots.js` → `/robots.txt`
+  (allow all, disallow legal/transactional, points at sitemap). Both verified via
+  curl on the running site. Fixes the pre-existing NO-sitemap gap that affected all
+  4 SEO pages. Adding a future SEO slug = one line in SEO_PAGES[] in sitemap.js.
+  STILL PENDING (owner-side): submit sitemap in Google Search Console — GSC account
+  was NEVER set up this project (no google-site-verification tag/file anywhere in the
+  site or PRD, confirmed Sept 2026). Agent cannot create/submit GSC (needs Nathan's
+  Google login).
+- **SEO priority-order truth (corrected Sept 2026):** there is NO locked, numbered
+  Priority-1 SEO sequence in this tracker. The only "locked sequence" in the PRD is
+  the FEATURE roadmap (#2 calendar, #3 admin dashboard, #4 Bunny, #5 live chat). SEO
+  pages have always been an UNORDERED candidate pool (see list below). So
+  `birthday-videographer-leeds` was a highest-intent judgement made in that session,
+  not "the next item on a locked list." No drift occurred because no SEO order was
+  ever locked. If Nathan wants a locked SEO order, it must be defined explicitly.
+- **Holds (owner directive):** Portfolio "Featured video" and manual
+  duration/upload_date fields — held until real videos are live and there's
+  evidence they'd help. YouTube Data API key — DECLINED (reopens the credential
+  trade-off oEmbed already settled; VideoObject fields it adds are optional for
+  Google eligibility).
+- **LOCKED SEO PAGE ORDER (owner directive, Sept 2026 — build strictly in this
+  sequence; do NOT reorder without an explicit owner instruction):**
+  1. Wedding Videographer Leeds — ✅ LIVE
+  2. Naming Ceremony Videographer Leeds — ✅ LIVE
+  3. Wedding Videographer Sheffield — ✅ LIVE
+  4. Birthday Videographer Leeds — ✅ LIVE
+  5. Birthday Videographer Sheffield — ✅ BUILT (this session; pending production deploy)
+  6. Naming Ceremony Videographer Sheffield
+  7. Corporate Event Videographer Leeds
+  8. Lifestyle / Brand Content Videographer Leeds
+  9–11. Remaining city+service combinations, TBD once 1–8 are live
+  Rationale (owner): weddings + naming ceremonies lead (highest search volume,
+  clearest cultural differentiation); Leeds before Sheffield (anchor city first);
+  round out remaining services in the same city before expanding to secondary cities.
+  When #5 deploys, remember to add its slug to app/sitemap.js SEO_PAGES[] (done for #5)
+  and to build #6 next.

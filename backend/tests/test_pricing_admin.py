@@ -310,6 +310,12 @@ def orphan_ref_ctx():
     """
     marker = uuid.uuid4().hex[:8]
     email = f"orphan_test_{marker}@flyboytest.com"
+    # Unique far-future event_date (900–1379 days out) so the confirmed
+    # booking never collides with the `bookings_one_confirmed_per_date`
+    # partial unique index — either with a real booking or another test's
+    # fixture running in the same full-suite pass. Well beyond the ~18-month
+    # booking horizon, so it can't clash with genuine bookings either.
+    ev_date = (date.today() + timedelta(days=900 + int(marker, 16) % 480)).isoformat()
 
     auth_res = sb_admin.auth.admin.create_user({
         "email": email, "email_confirm": True,
@@ -326,7 +332,7 @@ def orphan_ref_ctx():
         "email": email, "full_name": f"Orphan Test {marker}",
         "package_id": "wedding", "package_title": "Wedding Videography",
         "tier_name": "Basic", "price_total": 250.0, "price_deposit": 125.0,
-        "event_date": (date.today() + timedelta(days=30)).isoformat(),
+        "event_date": ev_date,
         "status": "paid", "session_id": f"cs_orphan_{marker}",
     }).execute().data[0]
 
@@ -334,8 +340,8 @@ def orphan_ref_ctx():
         "client_id": client["id"], "booking_intent_id": intent["id"],
         "title": "Wedding Videography — Basic",
         "shoot_type": "Wedding Videography", "status": "confirmed",
-        "event_date": (date.today() + timedelta(days=30)).isoformat(),
-        "shoot_date": (date.today() + timedelta(days=30)).isoformat(),
+        "event_date": ev_date,
+        "shoot_date": ev_date,
         "budget": 250.0, "is_seed_data": False,
     }).execute().data[0]
 
@@ -422,19 +428,61 @@ def test_publish_force_overrides_orphan_block(admin_token, base_catalog, orphan_
 def test_publish_allowed_when_only_cancelled_bookings_reference_removed_tier(
     admin_token, base_catalog, orphan_ref_ctx,
 ):
-    """A cancelled booking's tier removal should NOT block publish —
-    cancelled bookings are archival, not "live"."""
-    sb.table("bookings").update({"status": "cancelled"}).eq("id", orphan_ref_ctx["booking_id"]).execute()
-    # Also flip the intent status away from 'paid' so it's not counted
-    # as in-flight; a real cancellation flow would archive the intent too.
-    sb.table("booking_intents").update({"status": "cancelled"}).eq("id", orphan_ref_ctx["intent_id"]).execute()
+    """A tier whose ONLY references are cancelled bookings/intents must NOT
+    block removal — cancelled bookings are archival, not "live".
 
-    edited = copy.deepcopy(base_catalog)
-    edited["packages"][0]["tiers"] = [t for t in edited["packages"][0]["tiers"] if t["name"] != "Basic"]
-    requests.put(f"{BASE_URL}/api/admin/pricing/draft", headers=_hdr(admin_token), json=edited, timeout=15).raise_for_status()
+    HERMETIC: operates on a SYNTHETIC, run-unique tier this test fully owns,
+    NOT the real "Basic" tier. The shared prod DB can legitimately contain a
+    real confirmed customer booking on Basic (and the guard rightly protects
+    it), so asserting "Basic is removable" would be testing against live data.
+    We instead publish a throwaway tier, reference it with cancelled-only
+    rows, then prove its removal is allowed. `restore_after` resets the
+    catalog around the test; we clean up our own booking rows.
+    """
+    marker = uuid.uuid4().hex[:8]
+    tier = f"ZZTest_{marker}"
+    client_id = orphan_ref_ctx["client_id"]
+    # Unique far-future date (1400–1879 days out) — distinct from
+    # orphan_ref_ctx's range so the two confirmed bookings can't collide on
+    # the one-confirmed-per-date index.
+    ed = (date.today() + timedelta(days=1400 + int(marker, 16) % 480)).isoformat()
 
+    # 1. Publish a catalog that INCLUDES the synthetic tier (adding a tier
+    #    never triggers the orphan guard — it only fires on removals).
+    with_tier = copy.deepcopy(base_catalog)
+    with_tier["packages"][0]["tiers"].append({
+        "name": tier, "price": 199, "coverage": "synthetic test tier",
+        "features": ["synthetic — created by test_pricing_admin"],
+    })
+    requests.put(f"{BASE_URL}/api/admin/pricing/draft", headers=_hdr(admin_token), json=with_tier, timeout=15).raise_for_status()
     r = requests.post(f"{BASE_URL}/api/admin/pricing/publish", headers=_hdr(admin_token), timeout=30)
-    assert r.status_code == 200, f"cancelled-only ref should have allowed publish: {r.text}"
+    assert r.status_code == 200, f"adding a tier should publish cleanly: {r.text}"
+
+    # 2. Reference the synthetic tier with a paid intent + confirmed booking,
+    #    then flip BOTH to cancelled so only archival refs remain.
+    intent = sb.table("booking_intents").insert({
+        "email": f"cancelled_ref_{marker}@flyboytest.com", "full_name": f"Cancelled Ref {marker}",
+        "package_id": "wedding", "package_title": "Wedding Videography",
+        "tier_name": tier, "price_total": 199.0, "price_deposit": 99.5,
+        "event_date": ed, "status": "paid", "session_id": f"cs_cancelref_{marker}",
+    }).execute().data[0]
+    booking = sb.table("bookings").insert({
+        "client_id": client_id, "booking_intent_id": intent["id"],
+        "title": f"Wedding Videography — {tier}", "shoot_type": "Wedding Videography",
+        "status": "confirmed", "event_date": ed, "shoot_date": ed,
+        "budget": 199.0, "is_seed_data": False,
+    }).execute().data[0]
+    sb.table("bookings").update({"status": "cancelled"}).eq("id", booking["id"]).execute()
+    sb.table("booking_intents").update({"status": "cancelled"}).eq("id", intent["id"]).execute()
+
+    try:
+        # 3. Remove the synthetic tier — only cancelled refs → publish allowed.
+        requests.put(f"{BASE_URL}/api/admin/pricing/draft", headers=_hdr(admin_token), json=base_catalog, timeout=15).raise_for_status()
+        r = requests.post(f"{BASE_URL}/api/admin/pricing/publish", headers=_hdr(admin_token), timeout=30)
+        assert r.status_code == 200, f"cancelled-only ref should have allowed publish: {r.text}"
+    finally:
+        sb.table("bookings").delete().eq("id", booking["id"]).execute()
+        sb.table("booking_intents").delete().eq("id", intent["id"]).execute()
 
 
 def test_renaming_tier_is_treated_as_remove_plus_add_and_blocks(

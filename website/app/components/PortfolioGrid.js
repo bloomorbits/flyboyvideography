@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { CATEGORIES, items } from "../../lib/portfolio";
+import { CATEGORIES } from "../../lib/portfolio";
 import Reveal from "./Reveal";
 
 function PlayGlyph() {
@@ -11,98 +11,112 @@ function PlayGlyph() {
   );
 }
 
-// Uniform tile. Deliberately no col-span / row-span variants —
-// mixed spans plus aspect-ratio children created the empty-slot bug
-// reported on the live site. All 15 tiles share the same 4:3 frame so
-// every row is the same height and CSS Grid cannot leave holes.
+// Uniform tile. Real tiles are genuine click-to-play YouTube embeds (the
+// iframe loads in place on click — YouTube-hosted, plays on the page, not a
+// link-out). Placeholder tiles keep the diagonal "Placeholder" ribbon.
 function Card({ item }) {
   const isVideo = item.kind === "video";
+  const [playing, setPlaying] = useState(false);
+
   return (
     <article
       data-testid={`portfolio-card-${item.id}`}
-      data-cursor
+      data-cursor={item.real ? undefined : true}
       data-kind={item.kind}
-      className="group relative cursor-pointer overflow-hidden rounded-lg border border-dune bg-coal transition-transform duration-500 ease-out hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_18px_44px_rgba(23,20,15,0.18)]"
+      data-real={item.real ? "true" : "false"}
+      onClick={() => { if (item.real) setPlaying(true); }}
+      className={`group relative overflow-hidden rounded-lg border border-dune bg-coal transition-transform duration-500 ease-out hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_18px_44px_rgba(23,20,15,0.18)] ${item.real ? "cursor-pointer" : "cursor-pointer"}`}
     >
       <div className="relative aspect-[4/3] w-full">
-        <img
-          src={item.src}
-          alt=""
-          aria-hidden
-          loading="lazy"
-          decoding="async"
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
-        />
-        <div aria-hidden className="absolute inset-0 bg-black/25" />
-        <div aria-hidden className="grain opacity-50" />
+        {playing ? (
+          <iframe
+            data-testid={`portfolio-embed-${item.id}`}
+            className="absolute inset-0 h-full w-full"
+            src={`https://www.youtube.com/embed/${item.youtubeId}?autoplay=1&rel=0&modestbranding=1`}
+            title={item.title}
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
+        ) : (
+          <>
+            <img
+              src={item.src}
+              alt=""
+              aria-hidden
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+            />
+            <div aria-hidden className="absolute inset-0 bg-black/25" />
+            <div aria-hidden className="grain opacity-50" />
 
-        {/* Single per-tile placeholder marker — the diagonal ribbon.
-            The old amber caption line was removed after the top banner +
-            ribbon was judged sufficient. Ribbon has strong contrast
-            (cream text on ink@90) so it's readable on any stock photo. */}
-        <div
-          aria-hidden
-          data-testid={`portfolio-ribbon-${item.id}`}
-          className="pointer-events-none absolute -right-11 top-6 rotate-45 bg-ink/95 px-14 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-cream shadow-lg ring-1 ring-cream/25"
-        >
-          Placeholder
-        </div>
+            {/* Placeholder ribbon — ONLY on non-real tiles. Real embeds never
+                carry it, so real and placeholder content are never mixed
+                without a clear distinction. */}
+            {!item.real && (
+              <div
+                aria-hidden
+                data-testid={`portfolio-ribbon-${item.id}`}
+                className="pointer-events-none absolute -right-11 top-6 rotate-45 bg-ink/95 px-14 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-cream shadow-lg ring-1 ring-cream/25"
+              >
+                Placeholder
+              </div>
+            )}
 
-        {/* Kind + duration badges. Not a placeholder indicator —
-            these convey what the tile IS (reel vs still, runtime). */}
-        <div className="absolute left-4 top-4 flex items-center gap-2">
-          <span className="rounded-sm border border-cream/25 bg-black/45 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-cream backdrop-blur-sm">
-            {isVideo ? "Reel" : "Still"}
-          </span>
-          {isVideo && (
-            <span
-              data-testid={`portfolio-duration-${item.id}`}
-              className="rounded-sm bg-cream/95 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-ink"
-            >
-              {item.duration}
-            </span>
-          )}
-        </div>
+            <div className="absolute left-4 top-4 flex items-center gap-2">
+              <span className="rounded-sm border border-cream/25 bg-black/45 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-cream backdrop-blur-sm">
+                {isVideo ? "Reel" : "Still"}
+              </span>
+              {isVideo && item.duration && (
+                <span
+                  data-testid={`portfolio-duration-${item.id}`}
+                  className="rounded-sm bg-cream/95 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-ink"
+                >
+                  {item.duration}
+                </span>
+              )}
+            </div>
 
-        {isVideo && (
-          <div
-            data-testid={`portfolio-play-${item.id}`}
-            className="absolute inset-0 flex items-center justify-center"
-          >
-            <span className="flex h-16 w-16 items-center justify-center rounded-full border border-cream/40 bg-black/40 text-cream backdrop-blur-md transition-transform duration-300 group-hover:scale-110">
-              <PlayGlyph />
-            </span>
-          </div>
+            {isVideo && (
+              <div
+                data-testid={`portfolio-play-${item.id}`}
+                className="absolute inset-0 flex items-center justify-center"
+              >
+                <span className="flex h-16 w-16 items-center justify-center rounded-full border border-cream/40 bg-black/40 text-cream backdrop-blur-md transition-transform duration-300 group-hover:scale-110">
+                  <PlayGlyph />
+                </span>
+              </div>
+            )}
+
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent p-5">
+              <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-cream/75">
+                {item.meta}
+              </p>
+              <p className="mt-1 font-display text-lg font-semibold text-cream">
+                {item.title.replace(" · Placeholder", "")}
+              </p>
+            </div>
+          </>
         )}
-
-        {/* Title strip. Placeholder marker is intentionally dropped from
-            here — the top-of-page banner + diagonal ribbon carry it. */}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent p-5">
-          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-cream/75">
-            {item.meta}
-          </p>
-          <p className="mt-1 font-display text-lg font-semibold text-cream">
-            {item.title.replace(" · Placeholder", "")}
-          </p>
-        </div>
       </div>
     </article>
   );
 }
 
-export default function PortfolioGrid() {
+export default function PortfolioGrid({ tiles = [] }) {
   const [active, setActive] = useState("all");
 
   const filtered = useMemo(
-    () => (active === "all" ? items : items.filter((i) => i.category === active)),
-    [active]
+    () => (active === "all" ? tiles : tiles.filter((i) => i.category === active)),
+    [active, tiles]
   );
 
   const counts = useMemo(() => {
-    const c = { all: items.length };
-    for (const i of items) c[i.category] = (c[i.category] || 0) + 1;
+    const c = { all: tiles.length };
+    for (const i of tiles) c[i.category] = (c[i.category] || 0) + 1;
     return c;
-  }, []);
+  }, [tiles]);
 
   return (
     <section className="mx-auto max-w-6xl px-6 py-16 md:py-20">
@@ -145,10 +159,6 @@ export default function PortfolioGrid() {
         </div>
       </Reveal>
 
-      {/* Uniform 1/2/3-column grid. No auto-rows, no col/row-span variants,
-          no per-card Reveal wrapper (Reveal in a grid child was collapsing
-          to ~2px on load, which is what caused the huge unexplained gaps
-          reported on the live site). */}
       <div
         data-testid="portfolio-grid"
         data-active-category={active}
@@ -161,7 +171,7 @@ export default function PortfolioGrid() {
 
       {filtered.length === 0 && (
         <p data-testid="portfolio-empty" className="mt-10 font-mono text-xs uppercase tracking-widest text-ink/40">
-          No work in this category yet — placeholder set only.
+          Nothing in this category yet.
         </p>
       )}
     </section>

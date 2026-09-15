@@ -23,6 +23,7 @@ import hashlib
 import html
 import logging
 import os
+import pathlib
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
@@ -210,6 +211,72 @@ def _send_notification(enquiry: dict) -> None:
         log.exception("Resend enquiry send crashed: %s", e)
 
 
+_EMAILS_DIR = pathlib.Path(__file__).parent / "emails"
+
+
+def _load_template(name: str) -> str:
+    return (_EMAILS_DIR / name).read_text(encoding="utf-8")
+
+
+def _send_auto_ack(enquiry: dict) -> None:
+    """Warm auto-reply to the VISITOR. Best-effort — a Resend outage must not
+    lose the enquiry. Naturally rate-limited: this runs only after the
+    endpoint's contact_attempts limiter has passed, so it can't be turned into
+    a spam relay to arbitrary addresses. Reply-To points at the studio inbox."""
+    if not RESEND_API_KEY:
+        log.warning("RESEND_API_KEY not set — auto-ack skipped for %s", enquiry.get("email"))
+        return
+    to_email = (enquiry.get("email") or "").strip()
+    if not to_email:
+        return
+    first = ((enquiry.get("name") or "there").strip().split() or ["there"])[0]
+    ev = enquiry.get("event_date")
+    if ev:
+        event_line_txt = f" We've noted your date of {ev} and will factor it in."
+        event_line_html = f" We&rsquo;ve noted your date of <strong>{html.escape(str(ev))}</strong> and will factor it in."
+    else:
+        event_line_txt = ""
+        event_line_html = ""
+    try:
+        text_body = (
+            _load_template("enquiry_auto_ack.txt")
+            .replace("{{first_name}}", first)
+            .replace("{{event_line}}", event_line_txt)
+        )
+        html_body = (
+            _load_template("enquiry_auto_ack.html")
+            .replace("{{first_name}}", html.escape(first))
+            .replace("{{event_line_html}}", event_line_html)
+        )
+    except Exception as e:
+        log.warning("auto-ack template load failed: %s", e)
+        return
+    subject = f"Got it, {first} — we'll be in touch within one working day"
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            r = client.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {RESEND_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": RESEND_FROM_EMAIL,
+                    "to": [to_email],
+                    "reply_to": CONTACT_TO_EMAIL,
+                    "subject": subject,
+                    "html": html_body,
+                    "text": text_body,
+                },
+            )
+        if r.status_code >= 400:
+            log.warning("Resend auto-ack failed %s: %s", r.status_code, r.text[:300])
+        else:
+            log.info("auto-ack sent to %s (resend id %s)", to_email, r.json().get("id"))
+    except Exception as e:
+        log.exception("Resend auto-ack crashed: %s", e)
+
+
 @router.post("/api/contact/enquire", response_model=EnquireOut)
 def enquire(body: EnquireIn, request: Request):
     sb = _sb()
@@ -229,5 +296,9 @@ def enquire(body: EnquireIn, request: Request):
 
     # Best-effort notify; a Resend outage MUST NOT lose the enquiry.
     _send_notification(row)
+
+    # Warm auto-reply to the visitor (best-effort; rate-limited by the
+    # endpoint's own contact_attempts ledger — not a new abuse vector).
+    _send_auto_ack(row)
 
     return EnquireOut(id=row["id"], status="received")

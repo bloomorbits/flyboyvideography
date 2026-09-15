@@ -649,3 +649,105 @@ preview pod.
   - `email_confirm=False` on `admin.create_user` (SEC-002)
 - Concurrency + rate-limit proof: `tests/test_booking_concurrency.py`
   and `tests/sim_calendar_freeze_attack.py`.
+
+
+## Audit-history note — client portal mobile optimization (Sept 2026)
+
+Logged here so a future audit does NOT assume the portal was always
+mobile-fine (it was not), in the same spirit as the incident notes above.
+
+- **Finding:** a first-time 390×844 audit found the CRA client portal was
+  never actually mobile-optimized, despite earlier status implying it was.
+  `frontend/src/components/Layout.js` shipped a fixed `w-60` sidebar +
+  `<main class="ml-60 px-10">` with no responsive override and no hamburger.
+  Measured horizontal overflow at 390px: dashboard `scrollWidth=527`
+  (+137px), deliverable detail `scrollWidth=557` (+167px). The Bunny
+  "Watch film" / "Download original" controls were partially clipped and
+  nav was unreachable on a phone.
+- **Contrast:** the public Next.js marketing site WAS already responsive
+  (hamburger nav, `scrollWidth==390` on `/`, `/book`, SEO page). So the gap
+  was portal-only.
+- **Fix:** slide-in drawer + hamburger below `md`; `main` →
+  `px-4 pb-10 pt-20 md:ml-60 md:px-10 md:py-10`. Cookie banner made compact
+  on mobile so it no longer covered the home hero CTA / first `/book` card.
+- **After-numbers (re-measured):** portal dashboard 390=390, deliverable
+  detail 390=390; banner overlap=False on both pages.
+- **Verification gap to close later:** fix was proven by measurement +
+  screenshots, NOT by a committed automated responsive-layout test. If
+  regression protection is wanted, add a Playwright viewport assertion.
+
+**UPDATE (same session):** the regression guard was added —
+`frontend/e2e/test_portal_responsive.py` (Playwright, viewport 390×844).
+Asserts `scrollWidth <= clientWidth+1` on `/`, `/deliverables`, and the
+deliverable-detail page, plus drawer open/close. Verified it PASSES on the
+fixed shell and would FAIL on the before-numbers (527/557 > 390). 4 passed.
+
+## Security cleanup — CORS trim + Bunny endpoint rate limiting (Sept 2026)
+
+### CORS allowlist
+- **The true production allowlist is 5 origins, not 3.** The client PORTAL
+  deploys to its own domains, so both `CORS_ORIGINS` and `ALLOWED_ORIGIN_URLS`
+  legitimately contain:
+  `flyboyvideography.com`, `www.flyboyvideography.com`,
+  `flyboyvideography.vercel.app` (marketing) **+**
+  `flyboyvideography-portal.vercel.app`, `app.flyboyvideography.com` (portal).
+- **Live Railway `CORS_ORIGINS` was verified correct** — probed
+  `https://flyboyvideography-production.up.railway.app/api/health`: all 5 legit
+  origins echo `Access-Control-Allow-Origin`; the Emergent preview host,
+  `localhost:3001/3000`, `evil.example.com` and a `*.com.evil.com`
+  substring-attack all return NO ACAO header. The stale preview/localhost
+  entries the audit flagged were NOT in the production env.
+- The stale entries lived only in **(a) the preview pod `backend/.env`** and
+  **(b) the `_default_origin_allowlist` fallback in `booking.py`**. Both were
+  cleaned to the 5 legit origins this session (an earlier over-trim to 3 was
+  corrected once the portal domains were confirmed as the 4th/5th entries).
+  8-origin probe against `localhost:8001` (direct-to-app — the valid app-layer
+  point; the preview edge masks ACAO to `*` per PL-INFRA-2): 5 legit origins
+  echo, stale/hostile blocked, OPTIONS preflight from `localhost:3001` on
+  `/api/booking/checkout` → HTTP 400.
+- **RESOLVED:** Railway `ALLOWED_ORIGIN_URLS` confirmed by the owner to be
+  exactly those 5 origins; the repo default now matches. CORS is fully closed.
+  (Minor: the owner's paste had a stray space before one entry — both parsers
+  `.strip()` each item so it's harmless, but worth removing for cleanliness.)
+
+### Bunny endpoint rate limiting
+- Before: `bunny.py` had entitlement auth but ZERO rate limiting (audit gap).
+- **Client endpoints** — added `_bunny_rate_limit_or_429(sb, client)`:
+  DB-backed per-client sliding window (counts the client's rows in
+  `deliverable_access_events` over 60s, cap 60), consistent with the booking
+  limiter's posture. Admins bypass; fail-open on a count error. Applied to
+  **playback-token, download-url, play-event**. Proven (localhost:8001, seed
+  client `bunny.owner@seed`): clean → 200; at-cap → **429 `Retry-After: 60`**
+  on all three; admin at-cap → 200. Seed rows cleaned up.
+- **Public webhook** — added `_WebhookThrottle`, a LAYERED per-IP flood guard
+  evaluated **BEFORE HMAC** so a bad-signature flood can't burn
+  signature-verification CPU. In-process (no DB on a hot public path; single
+  Railway worker), mirroring the booking limiter's shape:
+  concurrent in-flight cap (per-IP 5 / global 50) **and** rolling-window cap
+  (per-IP 60 / global 300 per 60s). Global caps bound a multi-IP attacker.
+- **Attack sim proven** — `backend/tests/sim_bunny_webhook_flood.py` (safe-URL
+  guarded, like the calendar-freeze sim). Real numbers:
+  - A) per-IP window: 65 bad-sig POSTs from one IP → first 60 reach HMAC
+    (401), **first 429 at attempt #61**, 5 rejected before HMAC (CPU averted).
+  - B) global backstop: new spoofed IP per request → **first global 429 at
+    attempt #241** (300 cap minus the ~60 still in-window from A).
+  - C) concurrent per-IP cap: acquiring 7 slots without release → 5 admitted,
+    **2 rejected (429)**.
+
+> **⚠️ MULTI-WORKER CAVEAT — read before scaling this service.**
+> `_WebhookThrottle` (and its counters `_wh_win_ip`, `_wh_win_global`,
+> `_wh_inflight_*`) is **in-process**. It is correct ONLY while the backend
+> runs a **single** uvicorn worker / single Railway instance (the current
+> deploy). If this service is ever scaled to multiple workers or replicas,
+> each process keeps its OWN counters, so the effective limit silently
+> **multiplies by the worker/replica count** (e.g. 4 workers → ~4× the
+> intended per-IP and global caps), quietly defeating the flood guard.
+> **Before scaling:** move the webhook caps to a shared store — the same
+> Postgres-backed pattern the booking limiter already uses
+> (`checkout_attempts` insert-first-then-count for the rolling window,
+> `date_slot_locks`-style rows for the concurrent cap), keyed by IP with a
+> lazy retention purge. The client-facing Bunny limiter
+> (`_bunny_rate_limit_or_429`) is already DB-backed and does NOT have this
+> caveat; only the webhook throttle does, because it deliberately avoids a DB
+> round-trip on a hot public path. This is a conscious single-worker
+> trade-off, documented so a future scale-out doesn't inherit it silently.

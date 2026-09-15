@@ -1,0 +1,18 @@
+Thanks for reaching out, {{first_name}}.
+
+We've received your enquiry and we'll get back to you within one working
+day — usually sooner.{{event_line}}
+
+While you wait, feel free to take a look around:
+  Recent work:        https://flyboyvideography.com/portfolio
+  Services & pricing: https://flyboyvideography.com/services
+
+Thought of something to add? Just reply to this email — it comes straight to us.
+
+Talk soon,
+Flyboy Videography
+
+--
+Flyboy Videography
+hello@flyboyvideography.com · https://flyboyvideography.com
+Privacy: https://flyboyvideography.com/privacy · Terms: https://flyboyvideography.com/terms

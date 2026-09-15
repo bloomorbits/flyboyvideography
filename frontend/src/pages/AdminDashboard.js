@@ -27,6 +27,7 @@ const SUBNAV = [
   { to: "/admin",          label: "Dashboard", end: true },
   { to: "/admin/operate",  label: "Operate" },
   { to: "/admin/pricing",  label: "Pricing" },
+  { to: "/admin/portfolio", label: "Portfolio" },
   { to: "/admin/calendar", label: "Calendar" },
   { to: "/admin/security", label: "Security" },
 ];
