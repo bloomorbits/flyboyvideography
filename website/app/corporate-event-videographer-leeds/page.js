@@ -1,4 +1,5 @@
 import SEOLandingPage, { buildSeoMetadata } from "../components/SEOLandingPage";
+import { getCategoryHeroVideo } from "../../lib/portfolio-hero";
 
 const SLUG = "/corporate-event-videographer-leeds";
 const TITLE = "Corporate Event Videographer Leeds | Flyboy Videography";
@@ -54,6 +55,9 @@ const CONTENT = {
   cta: { href: "/contact", label: "Request a Quote" },
 };
 
-export default function CorporateEventVideographerLeedsPage() {
-  return <SEOLandingPage {...CONTENT} />;
+export const revalidate = 60;
+
+export default async function CorporateEventVideographerLeedsPage() {
+  const heroVideo = await getCategoryHeroVideo("corporate");
+  return <SEOLandingPage {...CONTENT} heroVideo={heroVideo} heroLabel="Corporate" />;
 }

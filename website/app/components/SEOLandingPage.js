@@ -1,4 +1,6 @@
 import Link from "next/link";
+import SeoVideoHero from "./SeoVideoHero";
+import { buildHeroVideoLd } from "../../lib/portfolio-hero";
 
 /**
  * SEOLandingPage — reusable server-rendered template for city/service SEO pages.
@@ -57,6 +59,8 @@ export default function SEOLandingPage({
   serviceArea,
   faqs = [],
   cta,
+  heroVideo = null,
+  heroLabel,
 }) {
   const faqJsonLd = buildFaqJsonLd(faqs);
 
@@ -72,8 +76,34 @@ export default function SEOLandingPage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
 
+      {/* Real-work video hero — rendered only when an active portfolio video
+          exists for this page's category. When null, nothing renders here and
+          the article keeps its full top padding (the existing, clean fallback).
+          The embed itself is click-to-play (see SeoVideoHero) so it costs no
+          YouTube network on load. */}
+      {heroVideo && (
+        <script
+          type="application/ld+json"
+          data-testid="hero-video-jsonld"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(
+              buildHeroVideoLd(heroVideo, { name: h1, description: directAnswer })
+            ),
+          }}
+        />
+      )}
+
+      {heroVideo && (
+        <SeoVideoHero
+          youtubeId={heroVideo.youtube_video_id}
+          title={heroVideo.title}
+          thumbnailUrl={heroVideo.thumbnail_url}
+          label={heroLabel}
+        />
+      )}
+
       <main className="bg-cream text-ink">
-        <article className="mx-auto max-w-3xl px-6 pb-24 pt-32 md:pt-40">
+        <article className={`mx-auto max-w-3xl px-6 pb-24 ${heroVideo ? "pt-12 md:pt-16" : "pt-32 md:pt-40"}`}>
           {kicker && (
             <p
               data-testid="seo-kicker"

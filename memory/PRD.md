@@ -1240,3 +1240,47 @@ layout — verification was measurement + screenshots this pass.
   round out remaining services in the same city before expanding to secondary cities.
   When #5 deploys, remember to add its slug to app/sitemap.js SEO_PAGES[] (done for #5)
   and to build #6 next.
+
+
+## SEO landing-page video hero (Sept 2026 — built + adversarially verified)
+
+- **What:** every SEO landing page now shows a real-work video hero ABOVE the page
+  content when an active `portfolio_videos` row exists for its category; when none
+  exists it renders the EXISTING hero-less layout unchanged (honest fallback).
+- **Files:**
+  - `website/lib/portfolio-hero.js` — `getCategoryHeroVideo(category)` fetches
+    `/api/portfolio` (60s ISR), returns the FIRST active video for the category
+    (API already orders by category→display_order→created_at, so first match =
+    correct hero), else null on any failure/empty. `buildHeroVideoLd()` builds the
+    VideoObject JSON-LD from the real row (mirrors /portfolio page).
+  - `website/app/components/SeoVideoHero.jsx` — client, CLICK-TO-PLAY (poster +
+    play button on load; YouTube iframe injected only on click → 0 iframes in SSR,
+    no autoplay, no YouTube network on load = LCP/SEO safe). Same embed pattern as
+    PortfolioGrid. No "Placeholder" ribbon (it's a real video or the fallback).
+  - `website/app/components/SEOLandingPage.js` — new optional `heroVideo`/`heroLabel`
+    props; renders `<SeoVideoHero>` + VideoObject `<script>` when heroVideo present,
+    and drops article top padding to pt-12 (hero already clears the header). When
+    null, article keeps pt-32 md:pt-40 — pixel-identical to the pre-hero design.
+  - All 8 SEO pages → `async` + `export const revalidate = 60` + await
+    `getCategoryHeroVideo(<cat>)`. Category map: wedding→weddings, birthday→birthdays,
+    naming-ceremony→naming, lifestyle→lifestyle, corporate→corporate.
+- **Corporate (point 5 answered):** `corporate` IS a valid portfolio_videos category
+  (DB CHECK + API label "Corporate/Brand"), just not a bookable priced service. So the
+  corporate SEO page queries `corporate` and shows a real corporate film if/when one is
+  added — no special-casing, stays fallback until then.
+- **VERIFIED end-to-end (adversarial, not assumed):**
+  1. Empty table → all 8 pages 200, clean fallback (no hero, pt-32, content/prices intact),
+     screenshot confirmed the fallback reads as intentional (not broken/missing).
+  2. Added a real active video to `weddings` via `/api/admin/portfolio` (oEmbed verified,
+     real title) → BOTH wedding pages rendered the hero + VideoObject LD + poster, and
+     birthday/naming stayed in fallback (category isolation). 0 `<iframe>` in SSR
+     (click-to-play confirmed).
+  3. Deleted the test video → API empty → both wedding pages back to clean fallback.
+  => "add via /admin/portfolio → appears on matching SEO page(s) within the 60s ISR
+     window, no code change" is PROVEN. (Dev-mode required manual cache-bust to observe
+     instantly; production ISR does this automatically via stale-while-revalidate.)
+  - NOTE: the website dev server (next dev -p 3001, NOT supervised) was restarted during
+    the proof; it's back up. Test video (Big Buck Bunny, id aqz-KE-bpKQ) fully removed.
+- **Pending:** production deploy (Save to GitHub → Vercel) — heroes only go live there
+  after deploy; until real footage is uploaded per category, every hero is fallback
+  (expected, confirmed by owner).
