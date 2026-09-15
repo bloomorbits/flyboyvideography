@@ -117,6 +117,9 @@ app.include_router(bunny_router)
 from portfolio import router as portfolio_router  # noqa: E402
 app.include_router(portfolio_router)
 
+from bunny_reconcile import router as bunny_reconcile_router  # noqa: E402
+app.include_router(bunny_reconcile_router)
+
 bearer = HTTPBearer(auto_error=False)
 
 SCHEMA_HINT = "Supabase tables not found. Run /app/supabase_schema.sql in your Supabase SQL Editor."
@@ -485,7 +488,11 @@ def admin_create_deliverable(body: DeliverableIn, admin=Depends(require_admin)):
     if not body.booking_id and not body.subscription_id:
         raise HTTPException(422, "Link the deliverable to a booking_id or subscription_id")
     _validate_video_object(body.bunny_storage_object)
-    return sb.table("deliverables").insert(body.model_dump(exclude_none=True)).execute().data[0]
+    payload = body.model_dump(exclude_none=True)
+    if payload.get("bunny_video_guid"):
+        from datetime import datetime, timezone
+        payload["bunny_linked_at"] = datetime.now(timezone.utc).isoformat()
+    return sb.table("deliverables").insert(payload).execute().data[0]
 
 
 @app.post("/api/admin/invoices")
@@ -506,6 +513,9 @@ def admin_patch_deliverable(deliverable_id: str, body: PatchBody, admin=Depends(
     if not updates:
         raise HTTPException(422, "Nothing to update")
     _validate_video_object(updates.get("bunny_storage_object"))
+    if updates.get("bunny_video_guid"):
+        from datetime import datetime, timezone
+        updates["bunny_linked_at"] = datetime.now(timezone.utc).isoformat()
     if updates.get("status") and updates["status"] != "approved":
         updates.update({"approved_by_user_id": None, "approved_by_name": None, "approved_at": None})
     r = sb.table("deliverables").update(updates).eq("id", deliverable_id).execute()
