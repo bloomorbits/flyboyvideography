@@ -1224,10 +1224,17 @@ layout — verification was measurement + screenshots this pass.
   3. Wedding Videographer Sheffield — ✅ LIVE
   4. Birthday Videographer Leeds — ✅ LIVE
   5. Birthday Videographer Sheffield — ✅ BUILT (this session; pending production deploy)
-  6. Naming Ceremony Videographer Sheffield
-  7. Corporate Event Videographer Leeds
-  8. Lifestyle / Brand Content Videographer Leeds
-  9–11. Remaining city+service combinations, TBD once 1–8 are live
+  6. Naming Ceremony Videographer Sheffield — ✅ BUILT (this session; pending production deploy)
+  7. Corporate Event Videographer Leeds — ✅ BUILT as QUOTE VARIANT (option b, this
+     session; slug /corporate-event-videographer-leeds). NO pricing, NO tier list,
+     NO /services#corporate anchor (doesn't exist); CTA → /contact "Request a Quote".
+     REQUIRED NO template change — SEOLandingPage blocks are all conditional; the
+     page simply omits `inlineLink` and any price prose. Pending production deploy.
+  8. Lifestyle / Brand Content Videographer Leeds — ✅ BUILT (this session; slug
+     /lifestyle-videographer-leeds; real Lifestyle Shoot pricing from £200,
+     anchor /services#lifestyle; pending production deploy)
+  9–11. Remaining city+service combinations — HOLD: still TBD (undecided). Owner to
+     define the actual slugs/services before any build.
   Rationale (owner): weddings + naming ceremonies lead (highest search volume,
   clearest cultural differentiation); Leeds before Sheffield (anchor city first);
   round out remaining services in the same city before expanding to secondary cities.

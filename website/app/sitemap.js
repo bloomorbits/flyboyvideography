@@ -14,6 +14,9 @@ const SEO_PAGES = [
   "/naming-ceremony-videographer-leeds",
   "/birthday-videographer-leeds",
   "/birthday-videographer-sheffield",
+  "/naming-ceremony-videographer-sheffield",
+  "/lifestyle-videographer-leeds",
+  "/corporate-event-videographer-leeds",
 ];
 
 export default function sitemap() {
