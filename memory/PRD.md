@@ -1177,3 +1177,30 @@ layout — verification was measurement + screenshots this pass.
   remain), click→iframe loads real embed, no ribbon on real tiles.
 - Test seed video created + removed; production table left EMPTY (0 rows →
   placeholders), no test data leaked.
+
+## Enquiry Auto-Ack + SEO page #4 (Sept 2026)
+
+- **Enquiry Auto-Ack (built + verified):** `/api/contact/enquire` now sends a
+  warm auto-reply to the visitor via Resend, best-effort, immediately after the
+  contact_enquiries row is written. Templates `backend/emails/enquiry_auto_ack.
+  {html,txt}` match booking_confirmation voice; From=RESEND_FROM_EMAIL,
+  Reply-To=CONTACT_TO_EMAIL (studio inbox); event-date line only rendered when a
+  date is given. Naturally rate-limited by the existing contact_attempts ledger
+  (runs after the limiter passes) → not a new spam vector. VERIFIED: real send
+  returned Resend HTTP 200, id 81c3334b… (to the studio inbox test). Copy was
+  drafted + shown before wiring, per the review gate. Test enquiry row cleaned up.
+- **SEO landing page #4 (built):** `/birthday-videographer-leeds` — chosen from
+  Priority-1 as the highest-intent gap (Birthday is fully priced £250/£400 MOST
+  POPULAR/£700 with complete deliverables, in the anchor city Leeds; we already
+  had wedding+naming Leeds but no birthday). Uses the shared SEOLandingPage +
+  buildSeoMetadata, mirrors the 3 live pages exactly; inline link /services#birthday
+  (valid — services sections use id={pkg.id}). Renders 200. Note: site still has
+  NO sitemap route (pre-existing gap, same for all 4 SEO pages).
+- **Holds (owner directive):** Portfolio "Featured video" and manual
+  duration/upload_date fields — held until real videos are live and there's
+  evidence they'd help. YouTube Data API key — DECLINED (reopens the credential
+  trade-off oEmbed already settled; VideoObject fields it adds are optional for
+  Google eligibility).
+- **Remaining Priority-1 SEO (candidates):** birthday-videographer-sheffield,
+  naming-ceremony-videographer-sheffield, corporate-videographer-leeds,
+  wedding-videographer-bradford/wakefield/york, lifestyle/reels-leeds.
