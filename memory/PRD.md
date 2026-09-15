@@ -1217,6 +1217,19 @@ layout — verification was measurement + screenshots this pass.
   evidence they'd help. YouTube Data API key — DECLINED (reopens the credential
   trade-off oEmbed already settled; VideoObject fields it adds are optional for
   Google eligibility).
-- **Remaining Priority-1 SEO (candidates):** birthday-videographer-sheffield,
-  naming-ceremony-videographer-sheffield, corporate-videographer-leeds,
-  wedding-videographer-bradford/wakefield/york, lifestyle/reels-leeds.
+- **LOCKED SEO PAGE ORDER (owner directive, Sept 2026 — build strictly in this
+  sequence; do NOT reorder without an explicit owner instruction):**
+  1. Wedding Videographer Leeds — ✅ LIVE
+  2. Naming Ceremony Videographer Leeds — ✅ LIVE
+  3. Wedding Videographer Sheffield — ✅ LIVE
+  4. Birthday Videographer Leeds — ✅ LIVE
+  5. Birthday Videographer Sheffield — ✅ BUILT (this session; pending production deploy)
+  6. Naming Ceremony Videographer Sheffield
+  7. Corporate Event Videographer Leeds
+  8. Lifestyle / Brand Content Videographer Leeds
+  9–11. Remaining city+service combinations, TBD once 1–8 are live
+  Rationale (owner): weddings + naming ceremonies lead (highest search volume,
+  clearest cultural differentiation); Leeds before Sheffield (anchor city first);
+  round out remaining services in the same city before expanding to secondary cities.
+  When #5 deploys, remember to add its slug to app/sitemap.js SEO_PAGES[] (done for #5)
+  and to build #6 next.
