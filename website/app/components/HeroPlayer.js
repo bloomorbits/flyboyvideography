@@ -79,7 +79,7 @@ export default function HeroPlayer({ kicker, headline, sub, cta }) {
   };
 
   return (
-    <section className="relative overflow-hidden bg-coal text-cream">
+    <section data-cursor="video" className="relative overflow-hidden bg-coal text-cream">
       <div aria-hidden className="pointer-events-none absolute inset-0">
         {/*
           Preload the poster with high priority so it's fetched ahead of
