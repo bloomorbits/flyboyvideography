@@ -1225,13 +1225,11 @@ layout — verification was measurement + screenshots this pass.
   4. Birthday Videographer Leeds — ✅ LIVE
   5. Birthday Videographer Sheffield — ✅ BUILT (this session; pending production deploy)
   6. Naming Ceremony Videographer Sheffield — ✅ BUILT (this session; pending production deploy)
-  7. Corporate Event Videographer Leeds — ⛔ BLOCKED: no corporate service or
-     pricing exists in lib/pricing.js (corporate is a PORTFOLIO category only, not a
-     bookable/priced package). Cannot build honestly on the pricing-led template
-     without inventing prices. Owner decision needed: (a) add a real Corporate
-     service + tiers to lib/pricing.js + /services first, then build; (b) build a
-     no-price "request a quote" variant (needs a template tweak, CTA → /contact);
-     or (c) drop/defer corporate until a corporate product exists.
+  7. Corporate Event Videographer Leeds — ✅ BUILT as QUOTE VARIANT (option b, this
+     session; slug /corporate-event-videographer-leeds). NO pricing, NO tier list,
+     NO /services#corporate anchor (doesn't exist); CTA → /contact "Request a Quote".
+     REQUIRED NO template change — SEOLandingPage blocks are all conditional; the
+     page simply omits `inlineLink` and any price prose. Pending production deploy.
   8. Lifestyle / Brand Content Videographer Leeds — ✅ BUILT (this session; slug
      /lifestyle-videographer-leeds; real Lifestyle Shoot pricing from £200,
      anchor /services#lifestyle; pending production deploy)
