@@ -1194,8 +1194,24 @@ layout — verification was measurement + screenshots this pass.
   POPULAR/£700 with complete deliverables, in the anchor city Leeds; we already
   had wedding+naming Leeds but no birthday). Uses the shared SEOLandingPage +
   buildSeoMetadata, mirrors the 3 live pages exactly; inline link /services#birthday
-  (valid — services sections use id={pkg.id}). Renders 200. Note: site still has
-  NO sitemap route (pre-existing gap, same for all 4 SEO pages).
+  (valid — services sections use id={pkg.id}). Renders 200.
+- **Sitemap + robots (built + verified, Sept 2026):** `app/sitemap.js` → `/sitemap.xml`
+  (10 URLs: home, services, portfolio, book, contact, faq + all 4 SEO landing pages,
+  all canonical https://flyboyvideography.com) and `app/robots.js` → `/robots.txt`
+  (allow all, disallow legal/transactional, points at sitemap). Both verified via
+  curl on the running site. Fixes the pre-existing NO-sitemap gap that affected all
+  4 SEO pages. Adding a future SEO slug = one line in SEO_PAGES[] in sitemap.js.
+  STILL PENDING (owner-side): submit sitemap in Google Search Console — GSC account
+  was NEVER set up this project (no google-site-verification tag/file anywhere in the
+  site or PRD, confirmed Sept 2026). Agent cannot create/submit GSC (needs Nathan's
+  Google login).
+- **SEO priority-order truth (corrected Sept 2026):** there is NO locked, numbered
+  Priority-1 SEO sequence in this tracker. The only "locked sequence" in the PRD is
+  the FEATURE roadmap (#2 calendar, #3 admin dashboard, #4 Bunny, #5 live chat). SEO
+  pages have always been an UNORDERED candidate pool (see list below). So
+  `birthday-videographer-leeds` was a highest-intent judgement made in that session,
+  not "the next item on a locked list." No drift occurred because no SEO order was
+  ever locked. If Nathan wants a locked SEO order, it must be defined explicitly.
 - **Holds (owner directive):** Portfolio "Featured video" and manual
   duration/upload_date fields — held until real videos are live and there's
   evidence they'd help. YouTube Data API key — DECLINED (reopens the credential
