@@ -1224,7 +1224,7 @@ layout — verification was measurement + screenshots this pass.
   3. Wedding Videographer Sheffield — ✅ LIVE
   4. Birthday Videographer Leeds — ✅ LIVE
   5. Birthday Videographer Sheffield — ✅ BUILT (this session; pending production deploy)
-  6. Naming Ceremony Videographer Sheffield
+  6. Naming Ceremony Videographer Sheffield — ✅ BUILT (this session; pending production deploy)
   7. Corporate Event Videographer Leeds
   8. Lifestyle / Brand Content Videographer Leeds
   9–11. Remaining city+service combinations, TBD once 1–8 are live
