@@ -50,6 +50,9 @@ CRON_JOB_JWT_SECRET = os.environ.get("CRON_JOB_JWT_SECRET", "")
 CRON_JOB_JWT_AUDIENCE = "flyboy:cron:daily-invoicing"
 INVOICE_LEAD_DAYS = int(os.environ.get("INVOICE_LEAD_DAYS", "10"))
 REMINDER_LEAD_DAYS = int(os.environ.get("REMINDER_LEAD_DAYS", "2"))
+# Retention for the Bunny access/rate-limit audit log. The daily cron purges
+# deliverable_access_events older than this so the table can't grow unbounded.
+ACCESS_EVENT_RETENTION_DAYS = int(os.environ.get("ACCESS_EVENT_RETENTION_DAYS", "90"))
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -504,6 +507,27 @@ def run_daily_invoicing(request: Request, _claims: dict = Depends(_require_cron_
         except Exception as e:
             log.exception("reminder branch failed for invoice %s", inv.get("id"))
             summary["errors"].append({"invoice_id": inv.get("id"), "err": f"{type(e).__name__}: {e}"})
+
+    # ================================================================
+    # 3. RETENTION — purge old deliverable_access_events (Bunny audit/
+    #    rate-limit log). Keeps the table bounded; best-effort, never blocks
+    #    the invoicing work. Skipped on dry runs.
+    # ================================================================
+    summary["access_events_purged"] = 0
+    if not dry_run:
+        try:
+            cutoff = (date.today() - timedelta(days=ACCESS_EVENT_RETENTION_DAYS)).isoformat()
+            purged = (
+                sb.table("deliverable_access_events")
+                .delete()
+                .lt("created_at", cutoff)
+                .execute()
+                .data
+            ) or []
+            summary["access_events_purged"] = len(purged)
+        except Exception as e:
+            log.warning("access-event retention purge skipped: %s", e)
+            summary["errors"].append({"retention": f"{type(e).__name__}: {e}"})
 
     # ---- Audit: close the run record ----
     if run_id:

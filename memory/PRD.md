@@ -1117,3 +1117,48 @@ layout — verification was measurement + screenshots this pass.
   first 429 at #61 (per-IP), global backstop at #241, concurrent cap rejects
   6th/7th slot. All scenarios pass.
 - Details + evidence in `docs/CREDENTIAL_ROTATION.md`.
+
+## Access-event retention + webhook multi-worker note + test-suite repair (Sept 2026)
+
+- **deliverable_access_events retention:** the daily cron
+  (`daily_invoicing.run_daily_invoicing`) now purges rows older than
+  `ACCESS_EVENT_RETENTION_DAYS` (default 90) so the audit/rate-limit table
+  stays bounded. Skipped on dry runs; best-effort (never blocks invoicing).
+  Verified: seeded 2 old + 1 recent → purge deleted the 2 old, kept recent.
+- **Webhook throttle multi-worker caveat:** documented in
+  CREDENTIAL_ROTATION.md — `_WebhookThrottle` is in-process; if the service
+  is ever scaled to multiple workers/replicas the global caps must move to a
+  shared Postgres store (booking-limiter pattern) or the effective limit
+  multiplies per worker. Single-worker deploy is correct today.
+- **Test-suite repair — `pytest backend/tests/` now FULLY GREEN (83 passed,
+  0 failed, 0 errors).** Fixes:
+  - `test_revision_rounds.py` — rewritten hermetic on the durable
+    `bunny.owner@seed` client (old demo-client seed was purged); 3 passed.
+  - `test_booking_flow.py` — added the Migration-010 `tc_accepted` consent
+    field to the checkout payload; 9 passed.
+  - `test_pricing_admin.py` — the failing cancelled-tier test's root cause was
+    a REAL confirmed customer booking on `wedding/Basic` (guard working
+    correctly); rewrote it hermetic on a synthetic run-unique tier. ALSO fixed
+    `orphan_ref_ctx` hardcoding `event_date = today+30`, which collided with
+    the `bookings_one_confirmed_per_date` unique index in full runs → now a
+    unique far-future per-test date. 21 passed.
+  - **Quarantine:** moved 5 superseded/legacy files
+    (`backend_test.py`, `iteration3/4/5_test.py`, script-style `test_bunny.py`)
+    to `backend/tests/legacy/` (README explains why), excluded from the
+    default run via `/app/pytest.ini` `norecursedirs = legacy`. They depended
+    on purged demo-seed data and are superseded by the maintained suites.
+
+## Portfolio (Migration 016) — DRAFTED, awaiting apply (Sept 2026)
+
+- Admin-editable YouTube portfolio to replace the hardcoded Pexels array.
+- Migration `/app/supabase_migration_016_portfolio_videos.sql` drafted.
+  DECISIONS (confirmed with owner): **direct-edit** (row-per-video + is_active,
+  no draft/publish — presentational, no downstream refs, instantly reversible);
+  **server-side validation** (DB CHECK `^[A-Za-z0-9_-]{11}$` + backend URL→id
+  normalize/422, mirroring the Bunny extension guard); **VideoObject metadata
+  via no-key YouTube oEmbed** auto-fill of real title+thumbnail on save
+  (duration/upload_date nullable, omitted). 5 categories: weddings, birthdays,
+  naming, corporate, lifestyle. Empty per-category → honest placeholder fallback.
+- NEXT: owner applies 016 in Supabase + I run introspection, THEN build
+  backend (/api/admin/portfolio/* + /api/portfolio) → Admin UI → public
+  /portfolio ISR wiring.

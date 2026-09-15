@@ -733,3 +733,21 @@ fixed shell and would FAIL on the before-numbers (527/557 > 390). 4 passed.
     attempt #241** (300 cap minus the ~60 still in-window from A).
   - C) concurrent per-IP cap: acquiring 7 slots without release → 5 admitted,
     **2 rejected (429)**.
+
+> **⚠️ MULTI-WORKER CAVEAT — read before scaling this service.**
+> `_WebhookThrottle` (and its counters `_wh_win_ip`, `_wh_win_global`,
+> `_wh_inflight_*`) is **in-process**. It is correct ONLY while the backend
+> runs a **single** uvicorn worker / single Railway instance (the current
+> deploy). If this service is ever scaled to multiple workers or replicas,
+> each process keeps its OWN counters, so the effective limit silently
+> **multiplies by the worker/replica count** (e.g. 4 workers → ~4× the
+> intended per-IP and global caps), quietly defeating the flood guard.
+> **Before scaling:** move the webhook caps to a shared store — the same
+> Postgres-backed pattern the booking limiter already uses
+> (`checkout_attempts` insert-first-then-count for the rolling window,
+> `date_slot_locks`-style rows for the concurrent cap), keyed by IP with a
+> lazy retention purge. The client-facing Bunny limiter
+> (`_bunny_rate_limit_or_429`) is already DB-backed and does NOT have this
+> caveat; only the webhook throttle does, because it deliberately avoids a DB
+> round-trip on a hot public path. This is a conscious single-worker
+> trade-off, documented so a future scale-out doesn't inherit it silently.

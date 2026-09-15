@@ -123,6 +123,10 @@ def _payload(event_date=None, **over):
         "phone": "+441234567890",
         "event_notes": "test",
         "origin_url": "https://flyboyvideography.com",
+        # Consent gate (Migration 010): T&Cs are the hard legal requirement —
+        # the checkout handler 400s without this. Model-release defaults to
+        # opted-in; no minors by default.
+        "tc_accepted": True,
     }
     body.update(over)
     return body
