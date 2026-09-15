@@ -13,6 +13,7 @@ import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
 import AdminSecurity from "./pages/AdminSecurity";
 import AdminPricing from "./pages/AdminPricing";
+import AdminPortfolio from "./pages/AdminPortfolio";
 import AdminCalendar from "./pages/AdminCalendar";
 import AdminDashboard from "./pages/AdminDashboard";
 
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="/admin/operate" element={<Admin />} />
             <Route path="/admin/security" element={<AdminSecurity />} />
             <Route path="/admin/pricing" element={<AdminPricing />} />
+            <Route path="/admin/portfolio" element={<AdminPortfolio />} />
             <Route path="/admin/calendar" element={<AdminCalendar />} />
           </Route>
         </Routes>

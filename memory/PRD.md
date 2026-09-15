@@ -1148,17 +1148,32 @@ layout — verification was measurement + screenshots this pass.
     default run via `/app/pytest.ini` `norecursedirs = legacy`. They depended
     on purged demo-seed data and are superseded by the maintained suites.
 
-## Portfolio (Migration 016) — DRAFTED, awaiting apply (Sept 2026)
+## Portfolio (Migration 016) — BUILT & VERIFIED (Sept 2026)
 
-- Admin-editable YouTube portfolio to replace the hardcoded Pexels array.
-- Migration `/app/supabase_migration_016_portfolio_videos.sql` drafted.
-  DECISIONS (confirmed with owner): **direct-edit** (row-per-video + is_active,
-  no draft/publish — presentational, no downstream refs, instantly reversible);
-  **server-side validation** (DB CHECK `^[A-Za-z0-9_-]{11}$` + backend URL→id
-  normalize/422, mirroring the Bunny extension guard); **VideoObject metadata
-  via no-key YouTube oEmbed** auto-fill of real title+thumbnail on save
-  (duration/upload_date nullable, omitted). 5 categories: weddings, birthdays,
-  naming, corporate, lifestyle. Empty per-category → honest placeholder fallback.
-- NEXT: owner applies 016 in Supabase + I run introspection, THEN build
-  backend (/api/admin/portfolio/* + /api/portfolio) → Admin UI → public
-  /portfolio ISR wiring.
+- Admin-editable YouTube portfolio replacing the hardcoded Pexels array.
+- **Migration 016 applied + adversarially verified** (live): 12 columns match
+  spec; `youtube_video_id` CHECK rejects non-11-char (23514); `category` CHECK
+  rejects out-of-set (23514); active-only RLS genuinely hides inactive rows
+  from anon; `updated_at` trigger fires on UPDATE.
+- **Backend `backend/portfolio.py`** (mounted in server.py): public
+  `GET /api/portfolio` (active rows, table-missing → graceful empty); admin
+  CRUD `GET/POST/PATCH/DELETE /api/admin/portfolio/*` (require_admin). Server
+  normalizes URL→11-char id + 422 on bad input (mirrors Bunny guard); no-key
+  YouTube **oEmbed** auto-fills real title + thumbnail on save and rejects
+  unavailable/unembeddable videos (422). Verified end-to-end: create via URL &
+  bare id (oEmbed real titles), 422 on bad id/category/fake, RLS active-only
+  public read, toggle/reorder/replace/delete.
+- **Admin UI `frontend/src/pages/AdminPortfolio.js`** at `/admin/portfolio`
+  (dark theme like AdminPricing), added to the admin sub-nav alongside Pricing.
+  Paste URL/ID per category, display order, active toggle, delete; empty
+  categories show a placeholder note. Verified via screenshot.
+- **Public `website/app/portfolio/page.js`** (ISR 60s) fetches `/api/portfolio`,
+  builds per-category tiles: real videos → click-to-play YouTube embeds (no
+  ribbon) with **VideoObject JSON-LD** from real metadata; categories with zero
+  active videos keep the honest ribboned placeholder tiles. Adaptive
+  transparency banner (real-only / mixed / placeholder-only). `PortfolioGrid.js`
+  rewritten to accept tiles + facade playback. Verified: SSR embedUrl +
+  VideoObject present, ribbon fallback correct (weddings real → 12 placeholders
+  remain), click→iframe loads real embed, no ribbon on real tiles.
+- Test seed video created + removed; production table left EMPTY (0 rows →
+  placeholders), no test data leaked.

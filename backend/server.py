@@ -114,6 +114,9 @@ app.include_router(admin_dashboard_router)
 from bunny import router as bunny_router  # noqa: E402
 app.include_router(bunny_router)
 
+from portfolio import router as portfolio_router  # noqa: E402
+app.include_router(portfolio_router)
+
 bearer = HTTPBearer(auto_error=False)
 
 SCHEMA_HINT = "Supabase tables not found. Run /app/supabase_schema.sql in your Supabase SQL Editor."
