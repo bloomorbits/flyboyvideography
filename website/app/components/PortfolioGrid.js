@@ -21,7 +21,7 @@ function Card({ item }) {
   return (
     <article
       data-testid={`portfolio-card-${item.id}`}
-      data-cursor={item.real ? undefined : true}
+      data-cursor={isVideo ? "video" : true}
       data-kind={item.kind}
       data-real={item.real ? "true" : "false"}
       onClick={() => { if (item.real) setPlaying(true); }}

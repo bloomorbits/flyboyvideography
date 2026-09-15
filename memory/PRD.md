@@ -1284,3 +1284,24 @@ layout — verification was measurement + screenshots this pass.
 - **Pending:** production deploy (Save to GitHub → Vercel) — heroes only go live there
   after deploy; until real footage is uploaded per category, every hero is fallback
   (expected, confirmed by owner).
+## Custom cursor fix + video hybrid (Sept 2026 — built + verified)
+
+- **Problem fixed:** old cursor used `mix-blend-difference` white ring → muddy/faded on
+  cream. Now a FIXED warm coral **#FF6A3D** (rgb 255,106,61) — outside the palette
+  (cream/sand/dune/ink/coal), with a `drop-shadow` for edge legibility → genuinely
+  visible on every surface (verified: coral ring on cream screenshot; coral camcorder
+  on coal hero screenshot).
+- **3 modes (`website/app/components/Cursor.js`):** default = coral ring; `view` =
+  filled coral circle + dark "VIEW" label (links/buttons/fields/cards); `video` =
+  coral line-art camcorder SVG (lucide "video" shape). Priority order: real interactive
+  controls (a/button/input/select/textarea) ALWAYS win (so hero CTAs stay "view"),
+  then `[data-cursor="video"]`, then any `[data-cursor]` → view, else default.
+- **Video surfaces marked `data-cursor="video"`:** HeroPlayer `<section>` (homepage +
+  portfolio hero), PortfolioGrid video-kind tiles (stills get `data-cursor` → view),
+  and SeoVideoHero frame (SEO-page hero — camcorder shows once a video is live; verified
+  by parity with portfolio tiles, same attribute + same cursor code path).
+- **Desktop-only gate UNCHANGED + reverified:** touch/iPhone context →
+  `matchMedia('(hover: hover)')=False` → cursor NOT rendered (Playwright-confirmed).
+- **Verified (headless Playwright, /tmp/cursor_verify*.py):** home hero→video,
+  nav→view, portfolio video tile→video (+camcorder svg), still→view, SEO body→default,
+  SEO inline link + CTA→view, default ring color=#FF6A3D, touch→no cursor.

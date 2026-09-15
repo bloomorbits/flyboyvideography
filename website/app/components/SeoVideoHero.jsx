@@ -32,6 +32,7 @@ export default function SeoVideoHero({ youtubeId, title, thumbnailUrl, label }) 
 
         <div
           data-testid="seo-hero-frame"
+          data-cursor="video"
           onClick={() => { if (!playing) setPlaying(true); }}
           className={`group relative mt-5 overflow-hidden rounded-xl border border-cream/10 bg-black ${playing ? "" : "cursor-pointer"}`}
         >
