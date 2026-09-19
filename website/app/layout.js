@@ -16,6 +16,9 @@ const SITE_URL = "https://flyboyvideography.com";
 
 export const metadata = {
   metadataBase: new URL(SITE_URL),
+  verification: {
+    google: "w1hsFAgKweFBFb2bqN1Nzpa9gDfV3W70thJgTBOJTGE",
+  },
   title: {
     default: "Flyboy Videography — Cinematic Event Films",
     template: "%s | Flyboy Videography",

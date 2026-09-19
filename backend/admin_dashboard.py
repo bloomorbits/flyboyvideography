@@ -63,6 +63,8 @@ REMINDER_QUEUED_WINDOW_DAYS = 2  # matches daily_invoicing.REMINDER_LEAD_DAYS
 # visible red flag automatically, instead of relying on someone checking.
 import os as _os
 CRON_STALE_HOURS = float(_os.environ.get("CRON_STALE_HOURS", "26"))
+# Reconcile sweep runs every 15 min; no green run in 1h (4 missed) = dead sweep.
+BUNNY_RECONCILE_STALE_HOURS = float(_os.environ.get("BUNNY_RECONCILE_STALE_HOURS", "1"))
 
 ALLOWED_ENQUIRY_STATUSES = ("new", "replied", "archived", "spam")
 
@@ -230,6 +232,38 @@ def _tile_deliverables_in_review(sb) -> dict:
     return {"count": len(rows), "items": items}
 
 
+def _tile_bunny_failed(sb) -> dict:
+    """Deliverables whose Bunny encode FAILED — surfaced in the attention band
+    so a broken transcode is visible, not silently stuck. Fed by the reconcile
+    sweep (and the webhook) writing bunny_status='Failed'. Same shape as the
+    other tiles so the frontend renders it identically."""
+    rows = (
+        sb.table("deliverables")
+        .select("id, client_id, booking_id, title, bunny_status, bunny_video_guid, updated_at")
+        .in_("bunny_status", ["Failed", "PresignedUploadFailed"])
+        .order("updated_at", desc=True)
+        .execute()
+        .data or []
+    )
+    client_ids = list({r["client_id"] for r in rows if r.get("client_id")})
+    names = {}
+    if client_ids:
+        cl = sb.table("clients").select("id, full_name, email").in_("id", client_ids).execute().data or []
+        names = {c["id"]: (c.get("full_name") or c.get("email") or "") for c in cl}
+    items = [
+        {
+            "id": r["id"],
+            "title": r.get("title") or "(untitled)",
+            "bunny_status": r["bunny_status"],
+            "bunny_video_guid": r.get("bunny_video_guid"),
+            "client_name": names.get(r["client_id"], ""),
+            "updated_at": r.get("updated_at"),
+        }
+        for r in rows[:ATTENTION_ITEMS_PER_TILE]
+    ]
+    return {"count": len(rows), "items": items}
+
+
 def _parse_ts(iso: Optional[str]):
     """Parse a Supabase timestamptz string to an aware datetime, or None."""
     if not iso:
@@ -246,7 +280,7 @@ def _parse_ts(iso: Optional[str]):
         return None
 
 
-def _tile_cron_last_run(sb) -> Optional[dict]:
+def _tile_cron_last_run(sb, job_name="daily_invoicing", stale_hours=CRON_STALE_HOURS) -> Optional[dict]:
     """Last daily-invoicing cron run + a staleness signal. Returns None if:
       - Migration 014 (cron_runs table) not applied yet, OR
       - no runs recorded yet.
@@ -261,7 +295,7 @@ def _tile_cron_last_run(sb) -> Optional[dict]:
         rows = _retry_transient(lambda: (
             sb.table("cron_runs")
             .select("id, job_name, started_at, finished_at, summary, error_count, ok")
-            .eq("job_name", "daily_invoicing")
+            .eq("job_name", job_name)
             .order("started_at", desc=True)
             .limit(1)
             .execute()
@@ -283,7 +317,7 @@ def _tile_cron_last_run(sb) -> Optional[dict]:
         ok_rows = _retry_transient(lambda: (
             sb.table("cron_runs")
             .select("started_at")
-            .eq("job_name", "daily_invoicing")
+            .eq("job_name", job_name)
             .eq("ok", True)
             .order("started_at", desc=True)
             .limit(1)
@@ -301,7 +335,7 @@ def _tile_cron_last_run(sb) -> Optional[dict]:
     hours_since_ok = round((now - ok_dt).total_seconds() / 3600.0, 1) if ok_dt else None
     # Stale when there's no green row inside the window (never succeeded, or
     # last success is older than the threshold).
-    stale = (hours_since_ok is None) or (hours_since_ok > CRON_STALE_HOURS)
+    stale = (hours_since_ok is None) or (hours_since_ok > stale_hours)
 
     return {
         "id": r["id"],
@@ -313,7 +347,7 @@ def _tile_cron_last_run(sb) -> Optional[dict]:
         "stale": stale,
         "last_ok_at": last_ok_at,
         "hours_since_last_ok": hours_since_ok,
-        "stale_threshold_hours": CRON_STALE_HOURS,
+        "stale_threshold_hours": stale_hours,
     }
 
 
@@ -339,9 +373,13 @@ def get_dashboard(admin=Depends(_require_admin)):
             "overdue_invoices": _safe(_tile_overdue_invoices),
             "balance_actions": _safe(_tile_balance_actions),
             "deliverables_in_review": _safe(_tile_deliverables_in_review),
+            "bunny_failed": _safe(_tile_bunny_failed),
         },
         "cron": {
             "daily_invoicing": _tile_cron_last_run(sb),
+            "bunny_reconcile": _tile_cron_last_run(
+                sb, job_name="bunny_reconcile", stale_hours=BUNNY_RECONCILE_STALE_HOURS
+            ),
         },
     }
 

@@ -293,6 +293,99 @@ function CronTile({ cron }) {
   );
 }
 
+function BunnyFailedTile({ tile }) {
+  const t = tile || { count: 0, items: [] };
+  return (
+    <section
+      className={`${cardCls} ${t.count > 0 ? "border-[#FF6B6B] ring-1 ring-[#FF6B6B]/40" : ""}`}
+      data-testid="tile-bunny-failed"
+    >
+      <div className={tileHeadCls}>
+        <h3 className={tileTitleCls}>Failed video encodes</h3>
+        <span className={countPillCls} style={{ color: t.count > 0 ? "#FF6B6B" : undefined }}>{t.count}</span>
+      </div>
+      {t.items.length === 0 ? (
+        <p className={emptyCls}>No failed encodes.</p>
+      ) : (
+        <ul>
+          {t.items.map((d) => (
+            <li key={d.id} className={rowCls} data-testid={`bunny-failed-${d.id}`}>
+              <div className="min-w-0 flex-1">
+                <p className={primaryCls}>{d.title}<span className="text-zinc-500"> · {d.client_name || "—"}</span></p>
+                <p className={`mt-0.5 ${secondaryCls}`}>
+                  {d.bunny_status} · {d.bunny_video_guid ? d.bunny_video_guid.slice(0, 8) : "—"} · {fmtDateShort(d.updated_at)}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function BunnyReconcileTile({ cron, onReconcile, busy }) {
+  const rec = cron?.bunny_reconcile;
+  const stale = !!rec?.stale;
+  return (
+    <section
+      className={`${cardCls} ${stale ? "border-[#FF6B6B] ring-1 ring-[#FF6B6B]/40" : ""}`}
+      data-testid="tile-bunny-reconcile"
+    >
+      <div className={tileHeadCls}>
+        <h3 className={tileTitleCls}>Bunny reconcile sweep</h3>
+        <div className="flex items-center gap-2">
+          {rec && (
+            <span
+              className={countPillCls}
+              style={{ color: stale ? "#FF6B6B" : rec.ok ? "#7ED957" : "#FF6B6B" }}
+              data-testid="bunny-reconcile-status-pill"
+            >
+              {stale ? "STALE" : rec.ok ? "OK" : `${rec.error_count} error(s)`}
+            </span>
+          )}
+          <button
+            onClick={onReconcile}
+            disabled={busy}
+            className={`${linkCls} disabled:opacity-40`}
+            data-testid="bunny-reconcile-now"
+          >
+            {busy ? "Running…" : "Reconcile now →"}
+          </button>
+        </div>
+      </div>
+      {!rec ? (
+        <p className={emptyCls}>No sweep recorded yet — runs every 15 min once the GitHub Action is live.</p>
+      ) : (
+        <>
+          <p className={secondaryCls}>Last run · {fmtDateTime(rec.started_at)} → {fmtDateTime(rec.finished_at)}</p>
+          <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[12px]">
+            <span className="text-zinc-500">Checked</span>
+            <span className="text-zinc-100">{rec.summary?.candidates ?? 0}</span>
+            <span className="text-zinc-500">Resolved finished</span>
+            <span className="text-zinc-100">{rec.summary?.resolved_finished?.length ?? 0}</span>
+            <span className="text-zinc-500">Flagged failed</span>
+            <span className="text-zinc-100">{rec.summary?.flagged_failed?.length ?? 0}</span>
+            <span className="text-zinc-500">Still processing</span>
+            <span className="text-zinc-100">{rec.summary?.still_processing?.length ?? 0}</span>
+          </div>
+          {rec.summary?.dry_run && (
+            <p className="mt-2 text-[10px] font-mono uppercase tracking-widest text-[#FFB020]">Dry-run</p>
+          )}
+          {rec.summary?.errors?.length > 0 && (
+            <details className="mt-2" data-testid="bunny-reconcile-errors">
+              <summary className="cursor-pointer text-[11px] text-red-400">Show errors ({rec.summary.errors.length})</summary>
+              <pre className="mt-1 max-h-48 overflow-auto rounded bg-[#0b0b0d] p-2 font-mono text-[10px] text-red-300">
+                {JSON.stringify(rec.summary.errors, null, 2)}
+              </pre>
+            </details>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 // ---------- Schedule band ----------
 
 const KIND_STYLES = {
@@ -361,6 +454,7 @@ export default function AdminDashboard() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(true);
+  const [reconciling, setReconciling] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -396,7 +490,22 @@ export default function AdminDashboard() {
     }
   }, [load]);
 
-  // Admin gate AFTER hooks so rules-of-hooks stays clean
+  const reconcileBunny = useCallback(async () => {
+    setReconciling(true);
+    try {
+      const { data } = await api.post("/admin/bunny/reconcile");
+      const s = data || {};
+      toast.success(
+        `Reconcile done · ${s.candidates ?? 0} checked · ` +
+        `${(s.resolved_finished || []).length} finished · ` +
+        `${(s.flagged_failed || []).length} failed · ` +
+        `${(s.errors || []).length} error(s)`
+      );
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || err.message || "Reconcile failed");
+    } finally { setReconciling(false); }
+  }, [load]);
   if (profile && profile.role !== "admin") return <Navigate to="/" replace />;
 
   return (
@@ -436,8 +545,12 @@ export default function AdminDashboard() {
                 <OverdueInvoicesTile tile={data.attention.overdue_invoices} />
                 <BalanceActionsTile tile={data.attention.balance_actions} />
                 <DeliverablesTile tile={data.attention.deliverables_in_review} />
+                <BunnyFailedTile tile={data.attention.bunny_failed} />
                 <div className="md:col-span-2">
                   <CronTile cron={data.cron} />
+                </div>
+                <div className="md:col-span-2">
+                  <BunnyReconcileTile cron={data.cron} onReconcile={reconcileBunny} busy={reconciling} />
                 </div>
               </div>
             </>
