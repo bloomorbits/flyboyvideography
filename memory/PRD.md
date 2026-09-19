@@ -1340,3 +1340,16 @@ Migration-first: supabase_migration_018_upload_lifecycle.sql drafted + introspec
 PENDING owner: (1) apply 018 + run introspect_018.py, (2) provision the new S3-enabled zone
 and set the 4 BUNNY_STORAGE_* env vars on Railway. Real Bunny round-trip verified on prod
 (preview lacks Bunny creds), same as Phase 1 + reconcile.
+
+## DEPLOYMENT STATUS CORRECTION (Sept 2026 — verified against prod)
+Earlier PRD notes said the website batch was "pending production deploy". THAT IS
+STALE — owner deployed and I re-verified LIVE on https://flyboyvideography.com:
+  * /sitemap.xml → 14 URLs  ✅
+  * all 8 SEO landing pages (incl. birthday-sheffield, lifestyle-leeds) → 200  ✅
+  * video-hero wiring live (fallback until real footage) ✅
+  * cursor fix + camcorder swap ✅ (owner-verified)
+  * google-site-verification meta tag (token w1hs…TGE, supplied by owner) → PRESENT on prod ✅
+Any earlier "pending deploy" wording for the SEO/sitemap/cursor/GSC-tag batch is void.
+GENUINELY UNDEPLOYED = only the Bunny reconcile feature (backend + .github workflow +
+dashboard tiles) and the not-yet-built Phase-2 upload code. Reconcile is backend/Railway +
+a GitHub Action; a Vercel website deploy does NOT carry it — no confirmation it's on Railway.
