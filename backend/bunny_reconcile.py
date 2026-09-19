@@ -66,6 +66,23 @@ TERMINAL_OK = ("Finished", "ResolutionFinished")
 TERMINAL_FAILED = ("Failed", "PresignedUploadFailed")
 
 
+def classify_status(new_name: str, current) -> tuple:
+    """Pure decision — no I/O, unit-testable. Given Bunny's reported status name
+    and the currently-stored status, return (bucket, status_to_write).
+      bucket: 'failed' | 'finished' | 'still'
+      status_to_write: the new bunny_status to persist, or None if unchanged.
+    CRITICAL PROPERTY: a non-terminal Bunny status (Queued/Processing/Encoding/
+    presigned-upload states) can ONLY ever return bucket 'still' — it is never
+    classified 'failed'. The only path to 'failed' is Bunny itself reporting a
+    TERMINAL_FAILED status. This is what guarantees a genuinely-still-processing
+    video is never false-flagged."""
+    if new_name in TERMINAL_FAILED:
+        return ("failed", new_name if new_name != current else None)
+    if new_name in TERMINAL_OK:
+        return ("finished", new_name if new_name != current else None)
+    return ("still", new_name if new_name != current else None)
+
+
 def _sb():
     from server import get_sb  # lazy — avoids circular import
     return get_sb()
@@ -203,25 +220,21 @@ def reconcile_bunny_statuses(dry_run: bool = False) -> dict:
                 continue
 
             new_name = res["status_name"]
+            bucket, to_write = classify_status(new_name, cur)
+            if to_write is not None and not dry_run:
+                sb.table("deliverables").update({"bunny_status": to_write}).eq("id", did).execute()
 
-            if new_name in TERMINAL_FAILED:
-                if not dry_run and new_name != cur:
-                    sb.table("deliverables").update({"bunny_status": new_name}).eq("id", did).execute()
+            if bucket == "failed":
                 summary["flagged_failed"].append({"id": did, "guid": guid, "from": cur, "to": new_name})
-
-            elif new_name in TERMINAL_OK:
-                if not dry_run and new_name != cur:
-                    sb.table("deliverables").update({"bunny_status": new_name}).eq("id", did).execute()
+            elif bucket == "finished":
                 summary["resolved_finished"].append({"id": did, "guid": guid, "from": cur, "to": new_name})
-
             else:
                 # Still Queued/Processing/Encoding (or presigned-upload states).
-                # DO NOT flag as failed. Reflect Bunny's truth if it advanced;
+                # NEVER flagged failed. Reflect Bunny's truth if it advanced;
                 # leave eligible for the next sweep.
-                changed = new_name != cur
-                if not dry_run and changed:
-                    sb.table("deliverables").update({"bunny_status": new_name}).eq("id", did).execute()
-                summary["still_processing"].append({"id": did, "guid": guid, "status": new_name, "changed": changed})
+                summary["still_processing"].append(
+                    {"id": did, "guid": guid, "status": new_name, "changed": to_write is not None}
+                )
 
         except Exception as e:
             log.exception("bunny reconcile: row %s failed", did)
