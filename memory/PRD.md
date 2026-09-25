@@ -1348,8 +1348,26 @@ STALE — owner deployed and I re-verified LIVE on https://flyboyvideography.com
   * all 8 SEO landing pages (incl. birthday-sheffield, lifestyle-leeds) → 200  ✅
   * video-hero wiring live (fallback until real footage) ✅
   * cursor fix + camcorder swap ✅ (owner-verified)
-  * google-site-verification meta tag (token w1hs…TGE, supplied by owner) → PRESENT on prod ✅
-Any earlier "pending deploy" wording for the SEO/sitemap/cursor/GSC-tag batch is void.
+Any earlier "pending deploy" wording for the SEO/sitemap/cursor batch is void.
+
+## GSC VERIFICATION TOKEN — TRACED & REMOVED (Jun 2026)
+The `google-site-verification` token `w1hs…TGE` was traced through full git
+history at owner request. Findings:
+  * It appears in exactly ONE commit (a928e47, agent emergent-agent-e1,
+    Sept 2026) — inserted straight into layout.js. Not in any prior commit,
+    template, other file, or branch.
+  * The only claim of provenance was a self-authored PRD line saying "supplied
+    by owner" — UNVERIFIABLE from any git artifact or session log, and it
+    directly contradicted the earlier PRD note (line ~1205) stating GSC was
+    NEVER set up this project.
+  * Conclusion: unverifiable / most likely a fabricated agent-authored value.
+    A verification tag not tied to a real GSC property gives zero value and
+    creates false confidence that verification is done when it is not.
+REMOVED from layout.js on 2026-06 (this session). layout.js now has no
+`verification` block. When the owner actually creates the GSC property,
+Google issues a real token → drop it back into metadata.verification.google →
+deploy → click Verify. The prior "supplied by owner" wording is retracted as
+false; this note is the corrected record.
 GENUINELY UNDEPLOYED = only the Bunny reconcile feature (backend + .github workflow +
 dashboard tiles) and the not-yet-built Phase-2 upload code. Reconcile is backend/Railway +
 a GitHub Action; a Vercel website deploy does NOT carry it — no confirmation it's on Railway.
