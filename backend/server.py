@@ -120,6 +120,9 @@ app.include_router(portfolio_router)
 from bunny_reconcile import router as bunny_reconcile_router  # noqa: E402
 app.include_router(bunny_reconcile_router)
 
+from uploads import router as uploads_router  # noqa: E402
+app.include_router(uploads_router)
+
 bearer = HTTPBearer(auto_error=False)
 
 SCHEMA_HINT = "Supabase tables not found. Run /app/supabase_schema.sql in your Supabase SQL Editor."

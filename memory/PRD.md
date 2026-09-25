@@ -1305,3 +1305,69 @@ layout — verification was measurement + screenshots this pass.
 - **Verified (headless Playwright, /tmp/cursor_verify*.py):** home hero→video,
   nav→view, portfolio video tile→video (+camcorder svg), still→view, SEO body→default,
   SEO inline link + CTA→view, default ring color=#FF6A3D, touch→no cursor.
+
+## Phase 2 — In-portal direct upload (Sept 2026 — SCOPED + APPROVED, migration drafted)
+
+Locked design (4-question scoping complete, all approved):
+- TRANSPORT: direct browser->Bunny; backend orchestrates only; long-lived secrets
+  (Stream API key, Storage password) never reach the browser. (Q1=a)
+- STREAM: backend pre-creates video object, mints 1h TUS signature scoped to that one
+  videoId. SHA256(libraryId+streamKey+expire+videoId). Env BUNNY_TUS_UPLOAD_TTL_SECONDS
+  (default 3600). Deviation from 30/15-min convention is deliberate+approved (resumable
+  multi-GB uploads need >=1h; Bunny checks expiry per chunk).
+- STORAGE: NEW S3-enabled Storage Zone (S3 compat MUST be ticked at creation — cannot be
+  added later; Phase-1 zone stays as-is). Backend mints 15-min S3 presigned PUT (boto3,
+  s3v4) to one random single-use key. Presigned PUT isn't create-only -> mitigated by
+  random key + one-time completion guard. Env: BUNNY_STORAGE_ZONE/REGION/S3_ENDPOINT/PASSWORD.
+- TWO FILES / TWO LANES (Q2=b): streaming export -> Stream; full-res master -> Storage.
+  Matches how a videographer already works (export + master are already 2 files). Each lane
+  independent progress + per-file retry. Rejected (c) server-side copy (reintroduces heavy
+  backend multi-GB moves Q1 avoids).
+- LIFECYCLE (Q3): row created at PREPARE time; hidden from client portal until backend
+  INDEPENDENTLY VERIFIES (Stream GET exists+not-Failed; Storage S3 HEAD exists+size>0).
+  Client "done" never trusted. Migration 018 adds upload_id + stream_upload_state +
+  storage_upload_state (NULL->pending->uploaded->confirmed|failed per lane).
+- ORPHANS (Q3=a): folded into the existing bunny_reconcile 15-min sweep. Rows stuck
+  pending/uploaded past 2h (beyond 1h TUS window) -> recover (Bunny has bytes = missed
+  callback) or fail + delete orphan Bunny object(s). Reuses bunny_linked_at as the clock.
+- ADMIN UX (Q4): uploader in the deliverable panel; paste-GUID KEPT, collapsed under
+  "Advanced" (recovery fallback + links the Phase-1 test deliverable). Per-stage progress
+  (Preparing->Uploading video NN%->Uploading final file NN%->Verifying->Done), "keep this
+  tab open" notice, tus-js-client resume, per-file retry. Failures surface in ONE combined
+  "Video problems" attention tile (failed encodes + failed uploads together).
+
+Migration-first: supabase_migration_018_upload_lifecycle.sql drafted + introspect_018.py.
+PENDING owner: (1) apply 018 + run introspect_018.py, (2) provision the new S3-enabled zone
+and set the 4 BUNNY_STORAGE_* env vars on Railway. Real Bunny round-trip verified on prod
+(preview lacks Bunny creds), same as Phase 1 + reconcile.
+
+## DEPLOYMENT STATUS CORRECTION (Sept 2026 — verified against prod)
+Earlier PRD notes said the website batch was "pending production deploy". THAT IS
+STALE — owner deployed and I re-verified LIVE on https://flyboyvideography.com:
+  * /sitemap.xml → 14 URLs  ✅
+  * all 8 SEO landing pages (incl. birthday-sheffield, lifestyle-leeds) → 200  ✅
+  * video-hero wiring live (fallback until real footage) ✅
+  * cursor fix + camcorder swap ✅ (owner-verified)
+Any earlier "pending deploy" wording for the SEO/sitemap/cursor batch is void.
+
+## GSC VERIFICATION TOKEN — TRACED & REMOVED (Jun 2026)
+The `google-site-verification` token `w1hs…TGE` was traced through full git
+history at owner request. Findings:
+  * It appears in exactly ONE commit (a928e47, agent emergent-agent-e1,
+    Sept 2026) — inserted straight into layout.js. Not in any prior commit,
+    template, other file, or branch.
+  * The only claim of provenance was a self-authored PRD line saying "supplied
+    by owner" — UNVERIFIABLE from any git artifact or session log, and it
+    directly contradicted the earlier PRD note (line ~1205) stating GSC was
+    NEVER set up this project.
+  * Conclusion: unverifiable / most likely a fabricated agent-authored value.
+    A verification tag not tied to a real GSC property gives zero value and
+    creates false confidence that verification is done when it is not.
+REMOVED from layout.js on 2026-06 (this session). layout.js now has no
+`verification` block. When the owner actually creates the GSC property,
+Google issues a real token → drop it back into metadata.verification.google →
+deploy → click Verify. The prior "supplied by owner" wording is retracted as
+false; this note is the corrected record.
+GENUINELY UNDEPLOYED = only the Bunny reconcile feature (backend + .github workflow +
+dashboard tiles) and the not-yet-built Phase-2 upload code. Reconcile is backend/Railway +
+a GitHub Action; a Vercel website deploy does NOT carry it — no confirmation it's on Railway.
