@@ -1368,6 +1368,51 @@ REMOVED from layout.js on 2026-06 (this session). layout.js now has no
 Google issues a real token → drop it back into metadata.verification.google →
 deploy → click Verify. The prior "supplied by owner" wording is retracted as
 false; this note is the corrected record.
+
+## ACCURACY CONVENTION + DRM DESCRIPTION CORRECTION (Jun 2026)
+DEFAULT for ALL status summaries from now on: tag every claim REAL (re-verified
+THIS session, with evidence) vs ASSUMED/RESTATED (carried from PRD/prior work,
+NOT re-verified now). Prompted by two overstatements caught in one report
+(Phase-1 "DRM+watermark" AND GSC "present on prod") — treated as a signal, not
+isolated slips.
+
+Bunny Phase-1 video protection — ACCURATE, layered description:
+  * Signed, 30-min-expiring embed token to iframe.mediadelivery.net
+    — REAL (bunny.py:249-257, 309-326).
+  * Download hard-gated to status in (approved, final_delivered), 15-min
+    presigned URL — REAL (bunny.py:333-363).
+  * On-screen session/client TRACE CODE overlay — REAL in code
+    (bunny.py:260-269), BUT it is a parent-page div that vanishes in
+    fullscreen and is identical for every viewer. It is NOT a burned-in /
+    forensic per-viewer watermark. No leak-traceability.
+  * MediaCage Basic DRM = dynamic session-based CLEAR-KEY encryption (defeats
+    common downloaders/rippers; NOT Widevine/PlayReady = MediaCage Enterprise;
+    NO forensic/per-viewer traceability). Recorded as ENABLED by Nathan on the
+    Stream library (June 2026 — docs/BUNNY_PHASE_1_SPEC.md, PRD line ~954).
+    STATUS: ASSUMED — a Bunny DASHBOARD toggle, NOT re-verified this session and
+    NOT provable from code (MediaCage is transparent to the token-embed flow;
+    only the Bunny dashboard + a live prod playback can confirm it is actually
+    on). Preview has no Bunny creds, so it cannot be tested here.
+
+Correction of the prior report: stating "it is NOT MediaCage DRM" was itself an
+overstatement in the OPPOSITE direction. Truth: the record says MediaCage Basic
+WAS enabled; what was never real is studio-grade DRM and a forensic watermark.
+Deliberately did NOT overwrite the docs to "signed-URL + trace code only" — that
+would UNDER-state the recorded MediaCage layer and repeat the same
+not-re-verified error. Final wording pending Nathan confirming the library
+toggle's CURRENT state in the Bunny dashboard.
+
+KNOWN PROTECTION GAP (decide consciously): no per-viewer/forensic watermark, so
+a screen-recorded pre-approval leak CANNOT be traced to a specific client. If
+that matters, it's a separate build (Bunny JIT per-viewer watermark or MediaCage
+Enterprise) — flagged, not assumed away.
+
+REDIRECT DIRECTION (Jun 2026): live behaviour is apex -> www (308), the OPPOSITE
+of the declared canonical (sitemap <loc> + robots Host/Sitemap all say apex).
+This is a Vercel domain-PRIMARY setting, NOT in repo code (next.config.mjs only
+has /admin -> portal). Cannot be fixed from code without risking a redirect
+loop. FIX = Vercel dashboard -> Project -> Settings -> Domains -> set apex
+(flyboyvideography.com) as Primary so www redirects to it. Owner action.
 GENUINELY UNDEPLOYED = only the Bunny reconcile feature (backend + .github workflow +
 dashboard tiles) and the not-yet-built Phase-2 upload code. Reconcile is backend/Railway +
 a GitHub Action; a Vercel website deploy does NOT carry it — no confirmation it's on Railway.

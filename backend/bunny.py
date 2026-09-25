@@ -139,7 +139,9 @@ EMBED_TTL_SECONDS = 1800   # 30 min (spec decision #5)
 DOWNLOAD_TTL_SECONDS = 900  # 15 min (spec decision #6)
 
 # Deliverable states whose RAW original may be downloaded (paid, approved
-# final product). Drafts/in-review are stream-only under DRM.
+# final product). Drafts/in-review are stream-only: signed 30-min embed token
+# + MediaCage Basic clear-key encryption IF still enabled on the library (a
+# Bunny dashboard setting, transparent to / not enforced by this code).
 DOWNLOADABLE_STATES = ("approved", "final_delivered")
 
 STREAM_STATUS_NAMES = {
