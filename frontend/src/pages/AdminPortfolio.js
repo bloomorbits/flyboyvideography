@@ -44,6 +44,20 @@ export default function AdminPortfolio() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ category: "weddings", youtube: "", title: "", display_order: 0, is_active: true });
 
+  // Homepage hero video (site_settings, Migration 019) — DB-backed, live in 60s.
+  const [heroInput, setHeroInput] = useState("");
+  const [heroId, setHeroId] = useState(null);
+  const [heroBusy, setHeroBusy] = useState(false);
+
+  const loadHero = useCallback(async () => {
+    try {
+      const { data } = await api.get("/site-settings/hero-video");
+      setHeroId(data.youtube_video_id || null);
+    } catch {
+      /* non-fatal — the public site falls back to the default video */
+    }
+  }, []);
+
   const reload = useCallback(async () => {
     try {
       const { data } = await api.get("/admin/portfolio");
@@ -57,6 +71,23 @@ export default function AdminPortfolio() {
   }, []);
 
   useEffect(() => { if (isAdmin) reload(); }, [isAdmin, reload]);
+  useEffect(() => { if (isAdmin) loadHero(); }, [isAdmin, loadHero]);
+
+  const saveHero = async (e) => {
+    e.preventDefault();
+    if (!heroInput.trim()) { toast.error("Paste a YouTube URL or video ID"); return; }
+    setHeroBusy(true);
+    try {
+      const { data } = await api.put("/admin/site-settings/hero-video", { youtube: heroInput.trim() });
+      setHeroId(data.youtube_video_id);
+      setHeroInput("");
+      toast.success("Homepage hero video updated — live within 60s");
+    } catch (err) {
+      toast.error(errMsg(err, "Could not update hero video"));
+    } finally {
+      setHeroBusy(false);
+    }
+  };
 
   if (profile && !isAdmin) return <Navigate to="/" replace />;
   if (!profile) return null;
@@ -118,6 +149,40 @@ export default function AdminPortfolio() {
       </div>
 
       <div className="mx-auto max-w-4xl space-y-6">
+        {/* Homepage hero video */}
+        <form onSubmit={saveHero} className={cardCls} data-testid="hero-video-form">
+          <h2 className="mb-1 font-display text-lg">Homepage hero video</h2>
+          <p className="mb-4 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+            The autoplaying video behind the homepage headline. Paste a YouTube link, save — live within 60s.
+          </p>
+          <div className="flex flex-col gap-4 md:flex-row md:items-end">
+            {heroId && (
+              <img
+                src={`https://i.ytimg.com/vi/${heroId}/hqdefault.jpg`}
+                alt="Current hero video"
+                className="h-20 w-36 shrink-0 rounded object-cover"
+                data-testid="hero-video-current-thumb"
+              />
+            )}
+            <label className="block flex-1">
+              <span className={labelCls}>
+                YouTube URL or 11-char video ID
+                {heroId && <span className="ml-2 normal-case tracking-normal text-zinc-600">current: {heroId}</span>}
+              </span>
+              <input
+                data-testid="hero-video-input"
+                value={heroInput}
+                onChange={(e) => setHeroInput(e.target.value)}
+                placeholder="https://youtu.be/… or dQw4w9WgXcQ"
+                className={inputCls}
+              />
+            </label>
+            <button type="submit" disabled={heroBusy} className={btnPrimary} data-testid="hero-video-save">
+              {heroBusy ? "Saving…" : "Save hero video"}
+            </button>
+          </div>
+        </form>
+
         {/* Add form */}
         <form onSubmit={addVideo} className={cardCls} data-testid="portfolio-add-form">
           <h2 className="mb-4 font-display text-lg">Add a video</h2>

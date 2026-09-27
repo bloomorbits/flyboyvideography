@@ -1368,6 +1368,88 @@ REMOVED from layout.js on 2026-06 (this session). layout.js now has no
 Google issues a real token → drop it back into metadata.verification.google →
 deploy → click Verify. The prior "supplied by owner" wording is retracted as
 false; this note is the corrected record.
+
+## ACCURACY CONVENTION + DRM DESCRIPTION CORRECTION (Jun 2026)
+DEFAULT for ALL status summaries from now on: tag every claim REAL (re-verified
+THIS session, with evidence) vs ASSUMED/RESTATED (carried from PRD/prior work,
+NOT re-verified now). Prompted by two overstatements caught in one report
+(Phase-1 "DRM+watermark" AND GSC "present on prod") — treated as a signal, not
+isolated slips.
+
+Bunny Phase-1 video protection — ACCURATE, layered description:
+  * Signed, 30-min-expiring embed token to iframe.mediadelivery.net
+    — REAL (bunny.py:249-257, 309-326).
+  * Download hard-gated to status in (approved, final_delivered), 15-min
+    presigned URL — REAL (bunny.py:333-363).
+  * On-screen session/client TRACE CODE overlay — REAL in code
+    (bunny.py:260-269), BUT it is a parent-page div that vanishes in
+    fullscreen and is identical for every viewer. It is NOT a burned-in /
+    forensic per-viewer watermark. No leak-traceability.
+  * MediaCage Basic DRM = dynamic session-based CLEAR-KEY encryption (defeats
+    common downloaders/rippers; NOT Widevine/PlayReady = MediaCage Enterprise;
+    NO forensic/per-viewer traceability). Recorded as ENABLED by Nathan on the
+    Stream library (June 2026 — docs/BUNNY_PHASE_1_SPEC.md, PRD line ~954).
+    STATUS: ASSUMED — a Bunny DASHBOARD toggle, NOT re-verified this session and
+    NOT provable from code (MediaCage is transparent to the token-embed flow;
+    only the Bunny dashboard + a live prod playback can confirm it is actually
+    on). Preview has no Bunny creds, so it cannot be tested here.
+
+Correction of the prior report: stating "it is NOT MediaCage DRM" was itself an
+overstatement in the OPPOSITE direction. Truth: the record says MediaCage Basic
+WAS enabled; what was never real is studio-grade DRM and a forensic watermark.
+Deliberately did NOT overwrite the docs to "signed-URL + trace code only" — that
+would UNDER-state the recorded MediaCage layer and repeat the same
+not-re-verified error. Final wording pending Nathan confirming the library
+toggle's CURRENT state in the Bunny dashboard.
+
+KNOWN PROTECTION GAP (decide consciously): no per-viewer/forensic watermark, so
+a screen-recorded pre-approval leak CANNOT be traced to a specific client. If
+that matters, it's a separate build (Bunny JIT per-viewer watermark or MediaCage
+Enterprise) — flagged, not assumed away.
+
+REDIRECT DIRECTION (Jun 2026): live behaviour is apex -> www (308), the OPPOSITE
+of the declared canonical (sitemap <loc> + robots Host/Sitemap all say apex).
+This is a Vercel domain-PRIMARY setting, NOT in repo code (next.config.mjs only
+has /admin -> portal). Cannot be fixed from code without risking a redirect
+loop. FIX = Vercel dashboard -> Project -> Settings -> Domains -> set apex
+(flyboyvideography.com) as Primary so www redirects to it. Owner action.
+
+## ADMIN-EDITABLE HOMEPAGE HERO VIDEO (Jun 2026)
+Feature: the homepage hero background is now an admin-editable YouTube video —
+autoplay muted + looping, with a small overlaid unmute button. Editable from
+the portal without a code deploy (DB-backed, ISR 60s).
+
+Built (REAL — verified this session):
+  * Migration 019 (`supabase_migration_019_site_settings.sql`): new generic
+    `site_settings` (key/value JSONB) table + updated_at trigger + narrow anon
+    SELECT RLS; seeds key `hero_video` = { youtube_video_id: 'MVE91GRuDVs' }
+    (owner-supplied default, https://youtu.be/MVE91GRuDVs).
+  * Backend `backend/site_settings.py` (registered server.py): public
+    GET /api/site-settings/hero-video (falls back to default id if table/row
+    absent — site never breaks) + admin PUT /api/admin/site-settings/hero-video
+    (reuses portfolio `_normalize_youtube_id` 422-guard + pricing `_require_admin`).
+    Verified: GET returns default id, PUT gated 401 without token.
+  * Website: `lib/hero-video.js` (ISR fetch + default fallback); `app/page.js`
+    now async, passes videoId to hero; `components/HeroPlayer.js` rewritten —
+    replaced local <video> with a cover-fill YouTube iframe (autoplay/mute/loop
+    via playlist=id; enablejsapi for postMessage unmute), REMOVED the old fake
+    "Showreel · placeholder" scrubber/timecode bar, added a small overlaid
+    unmute button; prefers-reduced-motion shows the poster instead. New CSS
+    `.hero-yt-cover` in globals.css. Verified in rendered HTML + screenshot:
+    iframe src = embed/MVE91GRuDVs, unmute button present, scrubber gone,
+    layout intact.
+  * Admin UI: hero-video field folded into AdminPortfolio (top card) — reuses
+    the existing dark admin theme + api.get/put. Compiled into the served
+    bundle (testids present, no JS errors).
+
+NOT verified this session (blocked):
+  * Full admin SAVE round-trip (PUT -> DB -> website reflects). No direct DB
+    access in preview (Supabase REST/service-role only, no psql/DATABASE_URL),
+    so Migration 019 is Supabase-Studio-only like 017/018. Until the owner
+    applies it, the site shows the DEFAULT video (which is the requested one)
+    and admin-save returns 500. DEPLOY STEPS: (1) apply 019 in Supabase Studio
+    (once — shared DB covers preview+prod), (2) Save to GitHub so Railway gets
+    site_settings.py + Vercel gets the hero changes.
 GENUINELY UNDEPLOYED = only the Bunny reconcile feature (backend + .github workflow +
 dashboard tiles) and the not-yet-built Phase-2 upload code. Reconcile is backend/Railway +
 a GitHub Action; a Vercel website deploy does NOT carry it — no confirmation it's on Railway.

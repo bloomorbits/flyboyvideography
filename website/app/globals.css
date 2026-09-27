@@ -125,6 +125,31 @@ html {
   filter: brightness(0.72) contrast(1.05) saturate(0.9);
 }
 
+/* hero YouTube background — cover-fill a 16:9 iframe over the hero box.
+   Uses the viewport-cover technique (section is full-bleed width); the
+   section's bg-coal fills any sliver the 16:9 frame can't reach, matching
+   the scrim palette so there's never a bright gap. */
+.hero-yt-cover {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background-color: #1a1410;
+}
+.hero-yt-cover iframe {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100vw;
+  height: 56.25vw;      /* 16:9 derived from width */
+  min-width: 177.78vh;  /* 16:9 derived from height */
+  min-height: 100vh;
+  transform: translate(-50%, -50%);
+  border: 0;
+  pointer-events: none;
+  /* match the warm grade of the old .hero-video-bg */
+  filter: brightness(0.72) contrast(1.05) saturate(0.9);
+}
+
 /* dark scrim ensures headline copy stays readable regardless of frame */
 .hero-scrim {
   position: absolute;

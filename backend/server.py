@@ -123,6 +123,10 @@ app.include_router(bunny_reconcile_router)
 from uploads import router as uploads_router  # noqa: E402
 app.include_router(uploads_router)
 
+# Admin-editable global site settings — see site_settings.py (Migration 019)
+from site_settings import router as site_settings_router  # noqa: E402
+app.include_router(site_settings_router)
+
 bearer = HTTPBearer(auto_error=False)
 
 SCHEMA_HINT = "Supabase tables not found. Run /app/supabase_schema.sql in your Supabase SQL Editor."
