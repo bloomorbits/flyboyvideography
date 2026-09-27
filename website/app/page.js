@@ -16,7 +16,7 @@ export default async function Home() {
   return (
     <>
       <HeroPlayer
-        videoIds={hero.videoIds}
+        videos={hero.videos}
         posterUrl={hero.posterUrl}
         kicker="Weddings · Birthdays · Ceremonies · Lifestyle · Graduations"
         headline="Turning visuals into value"

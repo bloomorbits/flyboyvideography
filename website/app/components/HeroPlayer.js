@@ -2,17 +2,37 @@
 import { useEffect, useRef, useState } from "react";
 
 const UNMUTE_KEY = "flyboyHeroUnmuted";
-const ROTATE_KEY = "flyboyHeroIndex";
+const LAST_KEY = "flyboyHeroLast";
 
-// Hero background is an admin-editable QUEUE of YouTube videos (Migration 019):
-//   (1) rotates to a different video each visit (index persisted in localStorage);
-//   (2) remembers a visitor's unmute choice in localStorage and re-applies it;
-//   (3) shows an admin-set poster image instantly while the embed buffers.
-// Autoplay policy requires mute=1 up front; the overlaid unmute button (and the
-// remembered preference) talk to the player via the YouTube IFrame API
-// (postMessage, enablejsapi=1) so opting into sound doesn't reload the clip.
-export default function HeroPlayer({ videoIds = [], posterUrl, kicker, headline, sub, cta }) {
-  const ids = videoIds.length ? videoIds : [];
+// Weighted pick: expand each video by its weight, pick at random, and avoid
+// immediately repeating the last-shown video when the queue has alternatives —
+// so favourites (higher weight) appear more often while each visit still tends
+// to differ.
+function weightedPick(videos, lastId) {
+  const pool = [];
+  videos.forEach((v) => {
+    const w = Math.max(1, Number(v.weight) || 1);
+    for (let i = 0; i < w; i++) pool.push(v.id);
+  });
+  if (!pool.length) return null;
+  const distinct = new Set(videos.map((v) => v.id));
+  let pick = pool[Math.floor(Math.random() * pool.length)];
+  let tries = 0;
+  while (pick === lastId && distinct.size > 1 && tries < 12) {
+    pick = pool[Math.floor(Math.random() * pool.length)];
+    tries++;
+  }
+  return pick;
+}
+
+// Hero background is an admin-editable, WEIGHTED queue of YouTube videos
+// (Migration 019): rotates per visit (favourites appear more often), remembers
+// a visitor's unmute choice in localStorage, and shows an admin-uploaded poster
+// instantly while the embed buffers. Autoplay policy requires mute=1 up front;
+// the overlaid unmute button (and remembered preference) drive the player via
+// the YouTube IFrame API (postMessage, enablejsapi=1) without reloading.
+export default function HeroPlayer({ videos = [], posterUrl, kicker, headline, sub, cta }) {
+  const list = Array.isArray(videos) ? videos.filter((v) => v && v.id) : [];
   const [chosenId, setChosenId] = useState(null);
   const [muted, setMuted] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -20,29 +40,22 @@ export default function HeroPlayer({ videoIds = [], posterUrl, kicker, headline,
   const wantUnmuteRef = useRef(false);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !ids.length) return;
+    if (typeof window === "undefined" || !list.length) return;
 
-    // (2) remembered unmute preference
     try {
       wantUnmuteRef.current = window.localStorage.getItem(UNMUTE_KEY) === "1";
     } catch { /* storage blocked — default muted */ }
 
-    // reduced motion → no autoplaying embed, poster only
     const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
     setReducedMotion(mql.matches);
     const onChange = () => setReducedMotion(mql.matches);
     mql.addEventListener("change", onChange);
 
-    // (1) per-visit rotation: cycle sequentially so consecutive visits differ
-    let idx = 0;
-    try {
-      const stored = parseInt(window.localStorage.getItem(ROTATE_KEY) || "", 10);
-      idx = Number.isFinite(stored) ? stored : Math.floor(Math.random() * ids.length);
-      window.localStorage.setItem(ROTATE_KEY, String((idx + 1) % ids.length));
-    } catch {
-      idx = Math.floor(Math.random() * ids.length);
-    }
-    setChosenId(ids[idx % ids.length]);
+    let lastId = null;
+    try { lastId = window.localStorage.getItem(LAST_KEY); } catch {}
+    const pick = weightedPick(list, lastId);
+    try { if (pick) window.localStorage.setItem(LAST_KEY, pick); } catch {}
+    setChosenId(pick);
 
     return () => mql.removeEventListener("change", onChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,8 +73,6 @@ export default function HeroPlayer({ videoIds = [], posterUrl, kicker, headline,
     command("playVideo");
   };
 
-  // When the embed loads, re-apply a remembered unmute (best-effort: browsers
-  // may keep it muted until a gesture if the visitor has no prior engagement).
   const onIframeLoad = () => {
     if (wantUnmuteRef.current) {
       setTimeout(() => {
@@ -83,17 +94,14 @@ export default function HeroPlayer({ videoIds = [], posterUrl, kicker, headline,
     }
   };
 
-  // (3) poster: admin URL if set, else the current video's YouTube thumbnail,
-  // else the packaged still. Uses videoIds[0] during SSR/first paint for a
-  // stable, instant image; swaps to the chosen video's thumb after mount.
-  const posterId = chosenId || ids[0];
+  const posterId = chosenId || (list[0] && list[0].id);
   const poster = posterUrl
     || (posterId ? `https://i.ytimg.com/vi/${posterId}/maxresdefault.jpg` : "/videos/hero-poster.webp");
 
   const params = chosenId
     ? new URLSearchParams({
         autoplay: "1",
-        mute: "1", // always mute for autoplay; unmute is applied after load
+        mute: "1",
         loop: "1",
         playlist: chosenId,
         controls: "0",
@@ -110,7 +118,6 @@ export default function HeroPlayer({ videoIds = [], posterUrl, kicker, headline,
   return (
     <section data-cursor="video" className="relative overflow-hidden bg-coal text-cream">
       <div aria-hidden className="pointer-events-none absolute inset-0">
-        {/* poster shows instantly + sits behind the embed while it buffers */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={poster} alt="" className="hero-video-bg" data-testid="hero-poster" />
         {!reducedMotion && chosenId && (

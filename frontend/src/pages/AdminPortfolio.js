@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -44,19 +44,23 @@ export default function AdminPortfolio() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ category: "weddings", youtube: "", title: "", display_order: 0, is_active: true });
 
-  // Homepage hero videos (site_settings, Migration 019) — queue + poster URL,
-  // DB-backed, live in 60s. The homepage rotates through the queue per visit.
+  // Homepage hero videos (site_settings, Migration 019) — weighted queue + an
+  // uploaded poster, DB-backed, live in 60s. Weighted rotation runs client-side.
   const [heroUrls, setHeroUrls] = useState([""]);
+  const [heroWeights, setHeroWeights] = useState([1]);
   const [heroPoster, setHeroPoster] = useState("");
   const [heroIds, setHeroIds] = useState([]);
   const [heroBusy, setHeroBusy] = useState(false);
+  const [posterBusy, setPosterBusy] = useState(false);
+  const posterFileRef = useRef(null);
 
   const loadHero = useCallback(async () => {
     try {
       const { data } = await api.get("/site-settings/hero-video");
-      const ids = data.youtube_video_ids || [];
-      setHeroIds(ids);
-      setHeroUrls(ids.length ? ids.map((id) => `https://youtu.be/${id}`) : [""]);
+      const vids = data.videos || [];
+      setHeroIds(vids.map((v) => v.id));
+      setHeroUrls(vids.length ? vids.map((v) => `https://youtu.be/${v.id}`) : [""]);
+      setHeroWeights(vids.length ? vids.map((v) => v.weight || 1) : [1]);
       setHeroPoster(data.poster_url || "");
     } catch {
       /* non-fatal — the public site falls back to the default video */
@@ -79,27 +83,68 @@ export default function AdminPortfolio() {
   useEffect(() => { if (isAdmin) loadHero(); }, [isAdmin, loadHero]);
 
   const setHeroUrlAt = (i, val) => setHeroUrls((prev) => prev.map((u, idx) => (idx === i ? val : u)));
-  const addHeroUrl = () => setHeroUrls((prev) => [...prev, ""]);
-  const removeHeroUrl = (i) => setHeroUrls((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+  const setHeroWeightAt = (i, val) => setHeroWeights((prev) => prev.map((w, idx) => (idx === i ? val : w)));
+  const addHeroUrl = () => { setHeroUrls((p) => [...p, ""]); setHeroWeights((p) => [...p, 1]); };
+  const removeHeroUrl = (i) => {
+    setHeroUrls((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+    setHeroWeights((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+  };
+
+  const persistHero = async (posterUrl) => {
+    const videos = heroUrls
+      .map((u, i) => ({ youtube: u.trim(), weight: Math.max(1, Math.min(10, Number(heroWeights[i]) || 1)) }))
+      .filter((v) => v.youtube);
+    if (!videos.length) { toast.error("Add at least one YouTube URL or video ID"); return null; }
+    const { data } = await api.put("/admin/site-settings/hero-video", { videos, poster_url: posterUrl ?? null });
+    const vids = data.videos || [];
+    setHeroIds(vids.map((v) => v.id));
+    setHeroUrls(vids.length ? vids.map((v) => `https://youtu.be/${v.id}`) : [""]);
+    setHeroWeights(vids.length ? vids.map((v) => v.weight || 1) : [1]);
+    return data;
+  };
 
   const saveHero = async (e) => {
     e.preventDefault();
-    const youtubes = heroUrls.map((u) => u.trim()).filter(Boolean);
-    if (!youtubes.length) { toast.error("Add at least one YouTube URL or video ID"); return; }
     setHeroBusy(true);
     try {
-      const { data } = await api.put("/admin/site-settings/hero-video", {
-        youtubes,
-        poster_url: heroPoster.trim() || null,
-      });
-      const ids = data.youtube_video_ids || [];
-      setHeroIds(ids);
-      setHeroUrls(ids.length ? ids.map((id) => `https://youtu.be/${id}`) : [""]);
-      toast.success(`Hero updated — ${ids.length} video${ids.length === 1 ? "" : "s"}, live within 60s`);
+      const data = await persistHero(heroPoster.trim() || null);
+      if (data) toast.success(`Hero updated — ${(data.videos || []).length} video(s), live within 60s`);
     } catch (err) {
       toast.error(errMsg(err, "Could not update hero videos"));
     } finally {
       setHeroBusy(false);
+    }
+  };
+
+  const uploadPoster = async (fileList) => {
+    const file = fileList && fileList[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { toast.error("Poster must be an image file"); return; }
+    setPosterBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await api.post("/admin/site-settings/hero-poster", fd);
+      setHeroPoster(data.poster_url);
+      toast.success("Poster uploaded — live within 60s");
+    } catch (err) {
+      toast.error(errMsg(err, "Poster upload failed"));
+    } finally {
+      setPosterBusy(false);
+      if (posterFileRef.current) posterFileRef.current.value = "";
+    }
+  };
+
+  const removePoster = async () => {
+    setPosterBusy(true);
+    try {
+      await persistHero(null);
+      setHeroPoster("");
+      toast.success("Poster removed");
+    } catch (err) {
+      toast.error(errMsg(err, "Could not remove poster"));
+    } finally {
+      setPosterBusy(false);
     }
   };
 
@@ -188,13 +233,26 @@ export default function AdminPortfolio() {
                   placeholder="https://youtu.be/… or dQw4w9WgXcQ"
                   className={inputCls}
                 />
+                <div className="flex shrink-0 flex-col">
+                  <span className="mb-1 font-mono text-[9px] uppercase tracking-widest text-zinc-500">Weight</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    data-testid={`hero-video-weight-${i}`}
+                    value={heroWeights[i] ?? 1}
+                    onChange={(e) => setHeroWeightAt(i, e.target.value)}
+                    title="Higher = appears more often in the rotation"
+                    className={`${inputCls} w-16`}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => removeHeroUrl(i)}
                   disabled={heroUrls.length <= 1}
                   aria-label="Remove video"
                   data-testid={`hero-video-remove-${i}`}
-                  className={`${btnMuted} shrink-0`}
+                  className={`${btnMuted} shrink-0 self-end`}
                 >
                   ✕
                 </button>
@@ -206,25 +264,54 @@ export default function AdminPortfolio() {
             + Add another video
           </button>
 
-          <label className="mt-5 block">
-            <span className={labelCls}>Poster image URL — shown instantly while the video loads (optional)</span>
-            <input
-              data-testid="hero-poster-input"
-              value={heroPoster}
-              onChange={(e) => setHeroPoster(e.target.value)}
-              placeholder="https://…/poster.jpg — blank uses the video thumbnail"
-              className={inputCls}
-            />
-          </label>
-          {heroPoster.trim() && (
-            <img
-              src={heroPoster.trim()}
-              alt="Poster preview"
-              className="mt-3 h-24 w-44 rounded object-cover"
-              data-testid="hero-poster-preview"
-              onError={(e) => { e.currentTarget.style.display = "none"; }}
-            />
-          )}
+          <div className="mt-5">
+            <span className={labelCls}>Poster image — shown instantly while the video loads (optional)</span>
+            <div
+              data-testid="hero-poster-dropzone"
+              onClick={() => posterFileRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); uploadPoster(e.dataTransfer.files); }}
+              className="mt-1 flex cursor-pointer items-center gap-4 rounded-md border border-dashed border-[#3f3f46] bg-[#0b0b0d] p-4 transition-colors hover:border-[#00E5FF]"
+            >
+              {heroPoster ? (
+                <img
+                  src={heroPoster}
+                  alt="Poster"
+                  className="h-20 w-36 shrink-0 rounded object-cover"
+                  data-testid="hero-poster-preview"
+                  onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}
+                />
+              ) : (
+                <div className="flex h-20 w-36 shrink-0 items-center justify-center rounded bg-[#141416] text-zinc-600">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-5-5L5 21" />
+                  </svg>
+                </div>
+              )}
+              <div className="min-w-0 text-sm text-zinc-400">
+                {posterBusy ? "Uploading…" : (
+                  <>
+                    <span className="text-zinc-200">Drop an image here</span> or click to choose.
+                    <br />
+                    <span className="text-[11px] text-zinc-500">JPEG, PNG, WebP, GIF or AVIF · max 5MB · blank uses the video thumbnail</span>
+                  </>
+                )}
+              </div>
+              <input
+                ref={posterFileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                data-testid="hero-poster-file"
+                onChange={(e) => uploadPoster(e.target.files)}
+              />
+            </div>
+            {heroPoster && (
+              <button type="button" onClick={removePoster} disabled={posterBusy} className={`${btnMuted} mt-2`} data-testid="hero-poster-remove">
+                Remove poster
+              </button>
+            )}
+          </div>
 
           <div className="mt-5">
             <button type="submit" disabled={heroBusy} className={btnPrimary} data-testid="hero-video-save">

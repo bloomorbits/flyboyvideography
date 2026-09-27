@@ -1480,6 +1480,36 @@ hero-video body {youtubes:[...], poster_url}. Verified: full PUT->GET round-trip
 Admin UI: AdminPortfolio queue editor (add/remove rows + poster field + preview)
 — compiled into the served bundle. Shared DB row reset to the clean default
 (["MVE91GRuDVs"], no poster) after testing.
+
+## HERO VIDEO — POSTER UPLOAD + PER-VIDEO WEIGHTING (Jun 2026)
+Two admin enhancements, no other changes. value shape extended in place (JSONB,
+no new migration): { youtube_video_ids:[...], weights:[...], poster_url }.
+
+Built + verified live this session (REAL):
+  1. POSTER FILE UPLOAD (replaces the URL field): new POST
+     /api/admin/site-settings/hero-poster (multipart, admin-gated) → validates
+     image type + 5MB cap → uploads to the PUBLIC Supabase Storage bucket
+     'hero-posters' (auto-created, idempotent) → stores the public URL on the
+     hero_video setting → returns it. Chose Supabase Storage (same existing
+     project, works on Railway prod, no new creds) over local disk (ephemeral
+     on Railway) / a new external store. Admin UI: drag-and-drop OR click
+     dropzone with instant preview + "Remove poster". Verified end-to-end:
+     curl multipart upload → object public-served (HTTP 200 image/png) → GET
+     returns it; AND an authed browser test (login → dropzone set_input_files →
+     preview shows uploaded URL → Save persists).
+  2. PER-VIDEO WEIGHTING: each queue row has a weight (1..10, clamped
+     server-side). HeroPlayer rotation switched from sequential to WEIGHTED
+     random (expand-by-weight pool + avoid immediate repeat via localStorage
+     'flyboyHeroLast') so favourites appear more often. Verified: over 24 fresh
+     visits with a 5:1 queue, distribution was 23:1 toward the weighted video.
+
+Endpoints now: GET → { videos:[{id,weight}], youtube_video_ids, poster_url,
+updated_at }; PUT body { videos:[{youtube,weight}], poster_url }; POST
+hero-poster (multipart). Verified 401 unauth + 422 guards still hold. Admin
+queue editor (weight input per row + dropzone) compiled into the served bundle.
+Shared DB reset to default + test storage objects deleted after testing.
+NOTE (dev only): Next.js dev fetch-cache made poster changes look stale in
+preview; ISR revalidate:60 self-heals (≤60s) — not a prod issue.
 GENUINELY UNDEPLOYED = only the Bunny reconcile feature (backend + .github workflow +
 dashboard tiles) and the not-yet-built Phase-2 upload code. Reconcile is backend/Railway +
 a GitHub Action; a Vercel website deploy does NOT carry it — no confirmation it's on Railway.
