@@ -44,15 +44,20 @@ export default function AdminPortfolio() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ category: "weddings", youtube: "", title: "", display_order: 0, is_active: true });
 
-  // Homepage hero video (site_settings, Migration 019) — DB-backed, live in 60s.
-  const [heroInput, setHeroInput] = useState("");
-  const [heroId, setHeroId] = useState(null);
+  // Homepage hero videos (site_settings, Migration 019) — queue + poster URL,
+  // DB-backed, live in 60s. The homepage rotates through the queue per visit.
+  const [heroUrls, setHeroUrls] = useState([""]);
+  const [heroPoster, setHeroPoster] = useState("");
+  const [heroIds, setHeroIds] = useState([]);
   const [heroBusy, setHeroBusy] = useState(false);
 
   const loadHero = useCallback(async () => {
     try {
       const { data } = await api.get("/site-settings/hero-video");
-      setHeroId(data.youtube_video_id || null);
+      const ids = data.youtube_video_ids || [];
+      setHeroIds(ids);
+      setHeroUrls(ids.length ? ids.map((id) => `https://youtu.be/${id}`) : [""]);
+      setHeroPoster(data.poster_url || "");
     } catch {
       /* non-fatal — the public site falls back to the default video */
     }
@@ -73,17 +78,26 @@ export default function AdminPortfolio() {
   useEffect(() => { if (isAdmin) reload(); }, [isAdmin, reload]);
   useEffect(() => { if (isAdmin) loadHero(); }, [isAdmin, loadHero]);
 
+  const setHeroUrlAt = (i, val) => setHeroUrls((prev) => prev.map((u, idx) => (idx === i ? val : u)));
+  const addHeroUrl = () => setHeroUrls((prev) => [...prev, ""]);
+  const removeHeroUrl = (i) => setHeroUrls((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+
   const saveHero = async (e) => {
     e.preventDefault();
-    if (!heroInput.trim()) { toast.error("Paste a YouTube URL or video ID"); return; }
+    const youtubes = heroUrls.map((u) => u.trim()).filter(Boolean);
+    if (!youtubes.length) { toast.error("Add at least one YouTube URL or video ID"); return; }
     setHeroBusy(true);
     try {
-      const { data } = await api.put("/admin/site-settings/hero-video", { youtube: heroInput.trim() });
-      setHeroId(data.youtube_video_id);
-      setHeroInput("");
-      toast.success("Homepage hero video updated — live within 60s");
+      const { data } = await api.put("/admin/site-settings/hero-video", {
+        youtubes,
+        poster_url: heroPoster.trim() || null,
+      });
+      const ids = data.youtube_video_ids || [];
+      setHeroIds(ids);
+      setHeroUrls(ids.length ? ids.map((id) => `https://youtu.be/${id}`) : [""]);
+      toast.success(`Hero updated — ${ids.length} video${ids.length === 1 ? "" : "s"}, live within 60s`);
     } catch (err) {
-      toast.error(errMsg(err, "Could not update hero video"));
+      toast.error(errMsg(err, "Could not update hero videos"));
     } finally {
       setHeroBusy(false);
     }
@@ -149,36 +163,72 @@ export default function AdminPortfolio() {
       </div>
 
       <div className="mx-auto max-w-4xl space-y-6">
-        {/* Homepage hero video */}
+        {/* Homepage hero videos — queue + poster */}
         <form onSubmit={saveHero} className={cardCls} data-testid="hero-video-form">
-          <h2 className="mb-1 font-display text-lg">Homepage hero video</h2>
+          <h2 className="mb-1 font-display text-lg">Homepage hero videos</h2>
           <p className="mb-4 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-            The autoplaying video behind the homepage headline. Paste a YouTube link, save — live within 60s.
+            The autoplaying video behind the homepage headline. Add several — the homepage rotates to a different one each visit. Live within 60s.
           </p>
-          <div className="flex flex-col gap-4 md:flex-row md:items-end">
-            {heroId && (
-              <img
-                src={`https://i.ytimg.com/vi/${heroId}/hqdefault.jpg`}
-                alt="Current hero video"
-                className="h-20 w-36 shrink-0 rounded object-cover"
-                data-testid="hero-video-current-thumb"
-              />
-            )}
-            <label className="block flex-1">
-              <span className={labelCls}>
-                YouTube URL or 11-char video ID
-                {heroId && <span className="ml-2 normal-case tracking-normal text-zinc-600">current: {heroId}</span>}
-              </span>
-              <input
-                data-testid="hero-video-input"
-                value={heroInput}
-                onChange={(e) => setHeroInput(e.target.value)}
-                placeholder="https://youtu.be/… or dQw4w9WgXcQ"
-                className={inputCls}
-              />
-            </label>
+
+          <div className="space-y-3" data-testid="hero-video-queue">
+            {heroUrls.map((url, i) => (
+              <div key={i} className="flex items-center gap-3">
+                {heroIds[i] && (
+                  <img
+                    src={`https://i.ytimg.com/vi/${heroIds[i]}/hqdefault.jpg`}
+                    alt=""
+                    className="hidden h-12 w-20 shrink-0 rounded object-cover sm:block"
+                    data-testid={`hero-video-thumb-${i}`}
+                  />
+                )}
+                <input
+                  data-testid={`hero-video-input-${i}`}
+                  value={url}
+                  onChange={(e) => setHeroUrlAt(i, e.target.value)}
+                  placeholder="https://youtu.be/… or dQw4w9WgXcQ"
+                  className={inputCls}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeHeroUrl(i)}
+                  disabled={heroUrls.length <= 1}
+                  aria-label="Remove video"
+                  data-testid={`hero-video-remove-${i}`}
+                  className={`${btnMuted} shrink-0`}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <button type="button" onClick={addHeroUrl} className={`${btnMuted} mt-3`} data-testid="hero-video-add-url">
+            + Add another video
+          </button>
+
+          <label className="mt-5 block">
+            <span className={labelCls}>Poster image URL — shown instantly while the video loads (optional)</span>
+            <input
+              data-testid="hero-poster-input"
+              value={heroPoster}
+              onChange={(e) => setHeroPoster(e.target.value)}
+              placeholder="https://…/poster.jpg — blank uses the video thumbnail"
+              className={inputCls}
+            />
+          </label>
+          {heroPoster.trim() && (
+            <img
+              src={heroPoster.trim()}
+              alt="Poster preview"
+              className="mt-3 h-24 w-44 rounded object-cover"
+              data-testid="hero-poster-preview"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
+          )}
+
+          <div className="mt-5">
             <button type="submit" disabled={heroBusy} className={btnPrimary} data-testid="hero-video-save">
-              {heroBusy ? "Saving…" : "Save hero video"}
+              {heroBusy ? "Saving…" : "Save hero videos"}
             </button>
           </div>
         </form>

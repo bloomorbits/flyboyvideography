@@ -65,10 +65,15 @@ create policy site_settings_read_public on public.site_settings
 
 -- ------------------------------------------------------------------------
 -- 4) Seed the hero_video setting with the owner-supplied default video.
+--    Shape: { youtube_video_ids: [...], poster_url: null }. The backend also
+--    reads a legacy { youtube_video_id } scalar for safety.
 --    ON CONFLICT DO NOTHING → safe to re-run.
 -- ------------------------------------------------------------------------
 insert into public.site_settings (key, value) values
-  ('hero_video', jsonb_build_object('youtube_video_id', 'MVE91GRuDVs'))
+  ('hero_video', jsonb_build_object(
+     'youtube_video_ids', jsonb_build_array('MVE91GRuDVs'),
+     'poster_url', null
+   ))
 on conflict (key) do nothing;
 
 commit;

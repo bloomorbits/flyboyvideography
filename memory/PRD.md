@@ -1450,6 +1450,36 @@ NOT verified this session (blocked):
     and admin-save returns 500. DEPLOY STEPS: (1) apply 019 in Supabase Studio
     (once — shared DB covers preview+prod), (2) Save to GitHub so Railway gets
     site_settings.py + Vercel gets the hero changes.
+
+## HERO VIDEO — 3 ENHANCEMENTS (Jun 2026)
+Migration 019 was CONFIRMED APPLIED (GET returns a real updated_at). No new
+migration — site_settings.value is JSONB, so the shape was extended in place:
+value = { youtube_video_ids: [...], poster_url: str|null }. Backend reads both
+the new list shape and the legacy { youtube_video_id } scalar.
+
+Built + verified live this session (REAL — Playwright against the running site):
+  1. QUEUE + PER-VISIT ROTATION: admin queues multiple YouTube URLs (backend
+     dedupes, order preserved, >=1 required). HeroPlayer rotates client-side —
+     index persisted in localStorage 'flyboyHeroIndex', advances each visit so
+     consecutive visits differ. Proven: visit1=dQw4w9WgXcQ, visit2=MVE91GRuDVs.
+  2. UNMUTE MEMORY: localStorage 'flyboyHeroUnmuted'; toggle writes it; on the
+     next visit the iframe onLoad re-applies unMute via postMessage. Proven:
+     pref persisted = "1" after click. CAVEAT (honest): autoplay-with-sound is
+     browser-gated — re-apply is best-effort; browsers with no prior engagement
+     may keep it muted until a gesture.
+  3. ADMIN-EDITABLE POSTER: poster_url shown instantly behind the embed while
+     it buffers (falls back to the chosen video's YouTube thumbnail, then the
+     packaged still). Poster is a URL field (paste/edit); http(s) validated
+     (422 on bad scheme). NOTE: file-UPLOAD not built — URL-only for now (would
+     need object storage).
+
+Endpoints (site_settings.py): GET /api/site-settings/hero-video →
+{youtube_video_ids, poster_url, updated_at}; PUT /api/admin/site-settings/
+hero-video body {youtubes:[...], poster_url}. Verified: full PUT->GET round-trip
+(dedupe 3->2), 401 unauth, 422 on garbage youtube / empty queue / bad poster.
+Admin UI: AdminPortfolio queue editor (add/remove rows + poster field + preview)
+— compiled into the served bundle. Shared DB row reset to the clean default
+(["MVE91GRuDVs"], no poster) after testing.
 GENUINELY UNDEPLOYED = only the Bunny reconcile feature (backend + .github workflow +
 dashboard tiles) and the not-yet-built Phase-2 upload code. Reconcile is backend/Railway +
 a GitHub Action; a Vercel website deploy does NOT carry it — no confirmation it's on Railway.
