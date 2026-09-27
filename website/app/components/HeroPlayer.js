@@ -1,24 +1,64 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-// Hero background is an admin-editable YouTube video (Migration 019): autoplays
-// muted + looping behind the headline, with a small overlaid unmute button so
-// visitors can opt into sound. Autoplay policies require mute=1 up front; the
-// unmute button talks to the player via the YouTube IFrame API (postMessage,
-// enablejsapi=1) so opting into sound doesn't reload/restart the clip.
-export default function HeroPlayer({ videoId, kicker, headline, sub, cta }) {
+const UNMUTE_KEY = "flyboyHeroUnmuted";
+const LAST_KEY = "flyboyHeroLast";
+
+// Weighted pick: expand each video by its weight, pick at random, and avoid
+// immediately repeating the last-shown video when the queue has alternatives —
+// so favourites (higher weight) appear more often while each visit still tends
+// to differ.
+function weightedPick(videos, lastId) {
+  const pool = [];
+  videos.forEach((v) => {
+    const w = Math.max(1, Number(v.weight) || 1);
+    for (let i = 0; i < w; i++) pool.push(v.id);
+  });
+  if (!pool.length) return null;
+  const distinct = new Set(videos.map((v) => v.id));
+  let pick = pool[Math.floor(Math.random() * pool.length)];
+  let tries = 0;
+  while (pick === lastId && distinct.size > 1 && tries < 12) {
+    pick = pool[Math.floor(Math.random() * pool.length)];
+    tries++;
+  }
+  return pick;
+}
+
+// Hero background is an admin-editable, WEIGHTED queue of YouTube videos
+// (Migration 019): rotates per visit (favourites appear more often), remembers
+// a visitor's unmute choice in localStorage, and shows an admin-uploaded poster
+// instantly while the embed buffers. Autoplay policy requires mute=1 up front;
+// the overlaid unmute button (and remembered preference) drive the player via
+// the YouTube IFrame API (postMessage, enablejsapi=1) without reloading.
+export default function HeroPlayer({ videos = [], posterUrl, kicker, headline, sub, cta }) {
+  const list = Array.isArray(videos) ? videos.filter((v) => v && v.id) : [];
+  const [chosenId, setChosenId] = useState(null);
   const [muted, setMuted] = useState(true);
   const [reducedMotion, setReducedMotion] = useState(false);
   const iframeRef = useRef(null);
+  const wantUnmuteRef = useRef(false);
 
-  // Respect prefers-reduced-motion: no autoplaying embed, show the poster.
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !list.length) return;
+
+    try {
+      wantUnmuteRef.current = window.localStorage.getItem(UNMUTE_KEY) === "1";
+    } catch { /* storage blocked — default muted */ }
+
     const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
     setReducedMotion(mql.matches);
     const onChange = () => setReducedMotion(mql.matches);
     mql.addEventListener("change", onChange);
+
+    let lastId = null;
+    try { lastId = window.localStorage.getItem(LAST_KEY); } catch {}
+    const pick = weightedPick(list, lastId);
+    try { if (pick) window.localStorage.setItem(LAST_KEY, pick); } catch {}
+    setChosenId(pick);
+
     return () => mql.removeEventListener("change", onChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const command = (func, args = []) => {
@@ -27,50 +67,69 @@ export default function HeroPlayer({ videoId, kicker, headline, sub, cta }) {
     w.postMessage(JSON.stringify({ event: "command", func, args }), "*");
   };
 
-  const toggleMute = () => {
-    if (muted) {
-      command("unMute");
-      command("setVolume", [100]);
-      command("playVideo");
-      setMuted(false);
-    } else {
-      command("mute");
-      setMuted(true);
+  const applyUnmute = () => {
+    command("unMute");
+    command("setVolume", [100]);
+    command("playVideo");
+  };
+
+  const onIframeLoad = () => {
+    if (wantUnmuteRef.current) {
+      setTimeout(() => {
+        applyUnmute();
+        setMuted(false);
+      }, 700);
     }
   };
 
-  // loop=1 needs playlist=<id> for a single video; enablejsapi=1 powers unmute.
-  const params = new URLSearchParams({
-    autoplay: "1",
-    mute: "1",
-    loop: "1",
-    playlist: videoId,
-    controls: "0",
-    modestbranding: "1",
-    rel: "0",
-    playsinline: "1",
-    enablejsapi: "1",
-    disablekb: "1",
-    fs: "0",
-    iv_load_policy: "3",
-  });
-  const src = `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
+  const toggleMute = () => {
+    if (muted) {
+      applyUnmute();
+      setMuted(false);
+      try { window.localStorage.setItem(UNMUTE_KEY, "1"); } catch {}
+    } else {
+      command("mute");
+      setMuted(true);
+      try { window.localStorage.setItem(UNMUTE_KEY, "0"); } catch {}
+    }
+  };
+
+  const posterId = chosenId || (list[0] && list[0].id);
+  const poster = posterUrl
+    || (posterId ? `https://i.ytimg.com/vi/${posterId}/maxresdefault.jpg` : "/videos/hero-poster.webp");
+
+  const params = chosenId
+    ? new URLSearchParams({
+        autoplay: "1",
+        mute: "1",
+        loop: "1",
+        playlist: chosenId,
+        controls: "0",
+        modestbranding: "1",
+        rel: "0",
+        playsinline: "1",
+        enablejsapi: "1",
+        disablekb: "1",
+        fs: "0",
+        iv_load_policy: "3",
+      }).toString()
+    : null;
 
   return (
     <section data-cursor="video" className="relative overflow-hidden bg-coal text-cream">
       <div aria-hidden className="pointer-events-none absolute inset-0">
-        {reducedMotion ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src="/videos/hero-poster.webp" alt="" className="hero-video-bg" />
-        ) : (
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={poster} alt="" className="hero-video-bg" data-testid="hero-poster" />
+        {!reducedMotion && chosenId && (
           <div className="hero-yt-cover">
             <iframe
               ref={iframeRef}
               data-testid="hero-youtube-embed"
-              src={src}
+              src={`https://www.youtube.com/embed/${chosenId}?${params}`}
               title="Showreel"
               allow="autoplay; encrypted-media; picture-in-picture"
               tabIndex={-1}
+              onLoad={onIframeLoad}
             />
           </div>
         )}
@@ -88,7 +147,7 @@ export default function HeroPlayer({ videoId, kicker, headline, sub, cta }) {
       </div>
 
       {/* Small unmute button overlaid on the video */}
-      {!reducedMotion && (
+      {!reducedMotion && chosenId && (
         <button
           data-testid="hero-mute-toggle"
           onClick={toggleMute}

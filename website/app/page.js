@@ -1,6 +1,6 @@
 import Link from "next/link";
 import HeroPlayer from "./components/HeroPlayer";
-import { getHeroVideoId } from "../lib/hero-video";
+import { getHeroVideo } from "../lib/hero-video";
 import Marquee from "./components/Marquee";
 import Reveal from "./components/Reveal";
 import HomePortfolioHighlights from "./components/HomePortfolioHighlights";
@@ -12,11 +12,12 @@ export const metadata = {
 const CATEGORIES = ["Weddings", "Birthdays", "Naming Ceremonies", "Gender Reveals", "Lifestyle", "Graduations", "Extra Reels"];
 
 export default async function Home() {
-  const heroVideoId = await getHeroVideoId();
+  const hero = await getHeroVideo();
   return (
     <>
       <HeroPlayer
-        videoId={heroVideoId}
+        videos={hero.videos}
+        posterUrl={hero.posterUrl}
         kicker="Weddings · Birthdays · Ceremonies · Lifestyle · Graduations"
         headline="Turning visuals into value"
         sub="Cinematic films of the moments that matter — with clear, transparent pricing and fast delivery."

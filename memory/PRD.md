@@ -1450,6 +1450,78 @@ NOT verified this session (blocked):
     and admin-save returns 500. DEPLOY STEPS: (1) apply 019 in Supabase Studio
     (once — shared DB covers preview+prod), (2) Save to GitHub so Railway gets
     site_settings.py + Vercel gets the hero changes.
+
+## HERO VIDEO — 3 ENHANCEMENTS (Jun 2026)
+Migration 019 was CONFIRMED APPLIED (GET returns a real updated_at). No new
+migration — site_settings.value is JSONB, so the shape was extended in place:
+value = { youtube_video_ids: [...], poster_url: str|null }. Backend reads both
+the new list shape and the legacy { youtube_video_id } scalar.
+
+Built + verified live this session (REAL — Playwright against the running site):
+  1. QUEUE + PER-VISIT ROTATION: admin queues multiple YouTube URLs (backend
+     dedupes, order preserved, >=1 required). HeroPlayer rotates client-side —
+     index persisted in localStorage 'flyboyHeroIndex', advances each visit so
+     consecutive visits differ. Proven: visit1=dQw4w9WgXcQ, visit2=MVE91GRuDVs.
+  2. UNMUTE MEMORY: localStorage 'flyboyHeroUnmuted'; toggle writes it; on the
+     next visit the iframe onLoad re-applies unMute via postMessage. Proven:
+     pref persisted = "1" after click. CAVEAT (honest): autoplay-with-sound is
+     browser-gated — re-apply is best-effort; browsers with no prior engagement
+     may keep it muted until a gesture.
+  3. ADMIN-EDITABLE POSTER: poster_url shown instantly behind the embed while
+     it buffers (falls back to the chosen video's YouTube thumbnail, then the
+     packaged still). Poster is a URL field (paste/edit); http(s) validated
+     (422 on bad scheme). NOTE: file-UPLOAD not built — URL-only for now (would
+     need object storage).
+
+Endpoints (site_settings.py): GET /api/site-settings/hero-video →
+{youtube_video_ids, poster_url, updated_at}; PUT /api/admin/site-settings/
+hero-video body {youtubes:[...], poster_url}. Verified: full PUT->GET round-trip
+(dedupe 3->2), 401 unauth, 422 on garbage youtube / empty queue / bad poster.
+Admin UI: AdminPortfolio queue editor (add/remove rows + poster field + preview)
+— compiled into the served bundle. Shared DB row reset to the clean default
+(["MVE91GRuDVs"], no poster) after testing.
+
+## HERO VIDEO — POSTER UPLOAD + PER-VIDEO WEIGHTING (Jun 2026)
+Two admin enhancements, no other changes. value shape extended in place (JSONB,
+no new migration): { youtube_video_ids:[...], weights:[...], poster_url }.
+
+Built + verified live this session (REAL):
+  1. POSTER FILE UPLOAD (replaces the URL field): new POST
+     /api/admin/site-settings/hero-poster (multipart, admin-gated) → validates
+     image type + 5MB cap → uploads to the PUBLIC Supabase Storage bucket
+     'hero-posters' (auto-created, idempotent) → stores the public URL on the
+     hero_video setting → returns it. Chose Supabase Storage (same existing
+     project, works on Railway prod, no new creds) over local disk (ephemeral
+     on Railway) / a new external store. Admin UI: drag-and-drop OR click
+     dropzone with instant preview + "Remove poster". Verified end-to-end:
+     curl multipart upload → object public-served (HTTP 200 image/png) → GET
+     returns it; AND an authed browser test (login → dropzone set_input_files →
+     preview shows uploaded URL → Save persists).
+  2. PER-VIDEO WEIGHTING: each queue row has a weight (1..10, clamped
+     server-side). HeroPlayer rotation switched from sequential to WEIGHTED
+     random (expand-by-weight pool + avoid immediate repeat via localStorage
+     'flyboyHeroLast') so favourites appear more often. Verified: over 24 fresh
+     visits with a 5:1 queue, distribution was 23:1 toward the weighted video.
+
+Endpoints now: GET → { videos:[{id,weight}], youtube_video_ids, poster_url,
+updated_at }; PUT body { videos:[{youtube,weight}], poster_url }; POST
+hero-poster (multipart). Verified 401 unauth + 422 guards still hold. Admin
+queue editor (weight input per row + dropzone) compiled into the served bundle.
+Shared DB reset to default + test storage objects deleted after testing.
+NOTE (dev only): Next.js dev fetch-cache made poster changes look stale in
+preview; ISR revalidate:60 self-heals (≤60s) — not a prod issue.
+
+## HERO VIDEO — DRAG-TO-REORDER QUEUE (Jun 2026)
+Admins can now drag hero videos into a preferred order. No other changes.
+Refactored the admin hero state from three parallel arrays (heroUrls/heroWeights/
+heroIds) into a single heroRows [{url, weight, id}] so reordering stays aligned
+and correct (also fixed a latent thumbnail-misalignment on row removal).
+Native HTML5 DnD (no new dependency): a grip handle per row is draggable
+(dragIndexRef), rows are drop targets (onDragOver highlight + onDrop →
+moveHeroRow splice). Order persists on Save (backend already preserves order).
+Verified via authed Playwright: seeded [A,B,C] → dragged last row onto first →
+UI became [C,A,B] → Saved → GET persisted [C,A,B]. Shared DB reset to default
+after testing. Testids: hero-video-row-{i}, hero-video-drag-{i}.
 GENUINELY UNDEPLOYED = only the Bunny reconcile feature (backend + .github workflow +
 dashboard tiles) and the not-yet-built Phase-2 upload code. Reconcile is backend/Railway +
 a GitHub Action; a Vercel website deploy does NOT carry it — no confirmation it's on Railway.
