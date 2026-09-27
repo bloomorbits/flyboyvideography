@@ -155,6 +155,8 @@ class PortfolioPatch(BaseModel):
     description: Optional[str] = None
     display_order: Optional[int] = None
     is_active: Optional[bool] = None
+    is_featured: Optional[bool] = None
+    featured_order: Optional[int] = None
     model_config = ConfigDict(extra="forbid")
 
 
@@ -183,9 +185,25 @@ def get_public_portfolio():
     return {"videos": rows, "categories": CATEGORY_LABELS}
 
 
-# ============================================================================
-# Admin endpoints
-# ============================================================================
+@router.get("/api/portfolio/featured")
+def get_featured_portfolio():
+    """Featured + active videos for the homepage Recent Work section, in the
+    admin-set order (featured_order asc). The homepage renders the first 4.
+    Degrades to empty if the table/column is missing (Migration 020 not yet
+    applied) so the homepage falls back to its placeholder set."""
+    try:
+        rows = (
+            _sb().table("portfolio_videos")
+            .select("id,category,youtube_video_id,title,thumbnail_url,duration_seconds")
+            .eq("is_active", True).eq("is_featured", True)
+            .order("featured_order").order("created_at")
+            .limit(12)
+            .execute().data or []
+        )
+    except Exception as e:
+        log.warning("featured portfolio read returning empty: %s", e)
+        return {"projects": []}
+    return {"projects": rows}
 
 @router.get("/api/admin/portfolio")
 def admin_list(admin=Depends(_require_admin)):
@@ -248,6 +266,10 @@ def admin_update(video_id: str, body: PortfolioPatch, admin=Depends(_require_adm
         updates["display_order"] = body.display_order
     if body.is_active is not None:
         updates["is_active"] = body.is_active
+    if body.is_featured is not None:
+        updates["is_featured"] = body.is_featured
+    if body.featured_order is not None:
+        updates["featured_order"] = body.featured_order
     if not updates:
         raise HTTPException(400, "No fields to update.")
     try:

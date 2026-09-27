@@ -1,6 +1,7 @@
 import Link from "next/link";
 import HeroPlayer from "./components/HeroPlayer";
 import { getHeroVideo } from "../lib/hero-video";
+import { getFeaturedProjects } from "../lib/featured-projects";
 import Marquee from "./components/Marquee";
 import Reveal from "./components/Reveal";
 import HomePortfolioHighlights from "./components/HomePortfolioHighlights";
@@ -12,7 +13,7 @@ export const metadata = {
 const CATEGORIES = ["Weddings", "Birthdays", "Naming Ceremonies", "Gender Reveals", "Lifestyle", "Graduations", "Extra Reels"];
 
 export default async function Home() {
-  const hero = await getHeroVideo();
+  const [hero, featuredProjects] = await Promise.all([getHeroVideo(), getFeaturedProjects()]);
   return (
     <>
       <HeroPlayer
@@ -41,7 +42,7 @@ export default async function Home() {
         }
       />
       <Marquee items={CATEGORIES} />
-      <HomePortfolioHighlights />
+      <HomePortfolioHighlights projects={featuredProjects} />
 
       {/* Compact CTA strip. Was previously py-20 with content only in the
           top-left, producing ~350px of empty space before the footer. Now

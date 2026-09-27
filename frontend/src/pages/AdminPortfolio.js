@@ -82,6 +82,39 @@ export default function AdminPortfolio() {
   useEffect(() => { if (isAdmin) reload(); }, [isAdmin, reload]);
   useEffect(() => { if (isAdmin) loadHero(); }, [isAdmin, loadHero]);
 
+  // Featured projects (Migration 020) — drag-to-reorder the homepage Recent Work.
+  const [featuredList, setFeaturedList] = useState([]);
+  const featDragRef = useRef(null);
+  const [featDragOver, setFeatDragOver] = useState(null);
+  useEffect(() => {
+    setFeaturedList(
+      videos.filter((v) => v.is_featured).sort((a, b) => (a.featured_order ?? 0) - (b.featured_order ?? 0))
+    );
+  }, [videos]);
+
+  const persistFeaturedOrder = async (list) => {
+    try {
+      const changed = list
+        .map((v, idx) => ((v.featured_order ?? 0) !== idx ? api.patch(`/admin/portfolio/${v.id}`, { featured_order: idx }) : null))
+        .filter(Boolean);
+      if (changed.length) await Promise.all(changed);
+      toast.success("Featured order updated — live within 60s");
+    } catch (err) {
+      toast.error(errMsg(err, "Could not save featured order"));
+    } finally {
+      reload();
+    }
+  };
+
+  const moveFeatured = (from, to) => {
+    if (from == null || to == null || from === to) return;
+    const next = [...featuredList];
+    const [m] = next.splice(from, 1);
+    next.splice(to, 0, m);
+    setFeaturedList(next);
+    persistFeaturedOrder(next);
+  };
+
   const setHeroRowField = (i, field, val) =>
     setHeroRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: val } : r)));
   const addHeroRow = () => setHeroRows((p) => [...p, { url: "", weight: 1, id: "" }]);
@@ -160,6 +193,7 @@ export default function AdminPortfolio() {
   if (!profile) return null;
 
   const catIds = Object.keys(categories).length ? Object.keys(categories) : ["weddings", "birthdays", "naming", "lifestyle", "corporate"];
+  const featuredCount = videos.filter((v) => v.is_featured && v.is_active).length;
 
   const addVideo = async (e) => {
     e.preventDefault();
@@ -384,7 +418,69 @@ export default function AdminPortfolio() {
         {loading ? (
           <p className="font-mono text-xs uppercase tracking-widest text-zinc-500">Loading…</p>
         ) : (
-          catIds.map((cid) => {
+          <>
+            <div className={cardCls} data-testid="featured-list">
+              <div className="mb-3 flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="font-display text-lg">Homepage “Recent Work”</h2>
+                  <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                    Drag to reorder — the homepage shows the top 4 in this order. Use ☆ Feature below to add projects.
+                  </p>
+                </div>
+                <span
+                  data-testid="featured-count"
+                  className={`shrink-0 rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-widest ${featuredCount === 4 ? "bg-[#00E5FF]/15 text-[#00E5FF]" : "bg-amber-400/10 text-amber-400"}`}
+                >
+                  {featuredCount} featured{featuredCount === 4 ? "" : " · homepage wants 4"}
+                </span>
+              </div>
+              {featuredList.length === 0 ? (
+                <p className="rounded border border-dashed border-[#27272a] px-3 py-4 text-xs text-zinc-500" data-testid="featured-empty">
+                  No featured projects yet — mark projects with ☆ Feature below.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {featuredList.map((v, i) => (
+                    <li
+                      key={v.id}
+                      data-testid={`featured-row-${v.id}`}
+                      onDragOver={(e) => { e.preventDefault(); if (featDragOver !== i) setFeatDragOver(i); }}
+                      onDrop={(e) => { e.preventDefault(); moveFeatured(featDragRef.current, i); featDragRef.current = null; setFeatDragOver(null); }}
+                      className={`flex items-center gap-3 rounded border border-[#27272a] bg-[#0b0b0d] p-2 transition-colors ${featDragOver === i ? "ring-1 ring-[#00E5FF]/40 bg-[#00E5FF]/10" : ""} ${i >= 4 ? "opacity-45" : ""}`}
+                    >
+                      <span
+                        draggable
+                        onDragStart={() => { featDragRef.current = i; }}
+                        onDragEnd={() => { featDragRef.current = null; setFeatDragOver(null); }}
+                        data-testid={`featured-drag-${v.id}`}
+                        title="Drag to reorder"
+                        className="flex h-8 w-6 shrink-0 cursor-grab items-center justify-center text-zinc-500 hover:text-zinc-200 active:cursor-grabbing"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                          <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
+                          <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
+                          <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
+                        </svg>
+                      </span>
+                      <span className="w-5 shrink-0 text-center font-mono text-xs text-zinc-500">{i + 1}</span>
+                      {v.thumbnail_url
+                        ? <img src={v.thumbnail_url} alt="" className="h-10 w-16 shrink-0 rounded object-cover" />
+                        : <div className="h-10 w-16 shrink-0 rounded bg-[#27272a]" />}
+                      <span className="min-w-0 flex-1 truncate text-sm text-zinc-100">{v.title}</span>
+                      {i >= 4 && <span className="shrink-0 font-mono text-[9px] uppercase tracking-widest text-amber-400">not shown</span>}
+                      <button
+                        onClick={() => patchVideo(v.id, { is_featured: false }, "Unfeatured")}
+                        className={`${btnMuted} shrink-0`}
+                        data-testid={`featured-unfeature-${v.id}`}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            {catIds.map((cid) => {
             const rows = videos.filter((v) => v.category === cid).sort((a, b) => a.display_order - b.display_order);
             const activeCount = rows.filter((r) => r.is_active).length;
             return (
@@ -421,6 +517,14 @@ export default function AdminPortfolio() {
                           />
                         </label>
                         <button
+                          onClick={() => patchVideo(v.id, { is_featured: !v.is_featured }, v.is_featured ? "Unfeatured" : "Featured on homepage")}
+                          className={v.is_featured ? btnPrimary : btnMuted}
+                          data-testid={`portfolio-feature-${v.id}`}
+                          title="Show in the homepage Recent Work section"
+                        >
+                          {v.is_featured ? "★ Featured" : "☆ Feature"}
+                        </button>
+                        <button
                           onClick={() => patchVideo(v.id, { is_active: !v.is_active }, v.is_active ? "Hidden" : "Now live")}
                           className={v.is_active ? btnPrimary : btnMuted}
                           data-testid={`portfolio-toggle-${v.id}`}
@@ -434,7 +538,8 @@ export default function AdminPortfolio() {
                 )}
               </div>
             );
-          })
+            })}
+          </>
         )}
       </div>
     </div>

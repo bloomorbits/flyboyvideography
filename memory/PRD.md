@@ -1522,6 +1522,59 @@ moveHeroRow splice). Order persists on Save (backend already preserves order).
 Verified via authed Playwright: seeded [A,B,C] → dragged last row onto first →
 UI became [C,A,B] → Saved → GET persisted [C,A,B]. Shared DB reset to default
 after testing. Testids: hero-video-row-{i}, hero-video-drag-{i}.
+
+## HOMEPAGE "RECENT WORK" — ADMIN-CONTROLLED FEATURED PROJECTS (Jun 2026)
+Admins can now mark portfolio projects (portfolio_videos, Migration 016) as
+featured + set their order; the homepage Recent Work section shows the 4
+featured projects in that order. No other homepage/layout/project-page changes.
+
+Migration 020 (supabase_migration_020_featured_projects.sql) — adds
+is_featured boolean + featured_order integer to portfolio_videos, plus a
+partial index. STATUS: NOT applied yet (existing rows return is_featured=MISSING);
+must be applied in Supabase Studio (no DDL access from preview — REST only).
+
+Built (code-complete this session):
+  * Backend (portfolio.py): PortfolioPatch gains is_featured/featured_order;
+    admin PATCH handles them; NEW public GET /api/portfolio/featured → active+
+    featured ordered by featured_order (limit 12), degrades to {projects:[]} if
+    the column/table is missing. Verified: endpoint returns [] gracefully
+    pre-migration; backend healthy.
+  * Website: lib/featured-projects.js (ISR fetch, [] fallback); page.js fetches
+    it (Promise.all with hero) and passes to HomePortfolioHighlights, which now
+    renders the first 4 featured as real tiles (YouTube thumb, category label,
+    duration, title) OR falls back to the placeholder set when none featured.
+    Verified: homepage renders, shows placeholder fallback correctly (nothing
+    featured yet), no compile errors.
+  * Admin (AdminPortfolio.js): per-row ★ Feature toggle + Feat. order input
+    (disabled until featured) via existing patchVideo; a "featured-count" banner
+    warns when != 4. Compiled into the served bundle.
+
+NOT verified (blocked on Migration 020): the featured WRITE path + "homepage
+shows exactly 4 in admin order" E2E. Run once the owner applies 020.
+Behavior notes: homepage shows first 4 by featured_order; if 1-3 featured shows
+those; if 0 featured falls back to placeholder set; only active+featured count.
+
+## FEATURED PROJECTS — E2E VERIFIED + DRAG-TO-REORDER (Jun 2026)
+Migration 020 confirmed APPLIED (is_featured/featured_order now present).
+Full E2E verified (REAL, authed Playwright + curl):
+  * Featured 4 projects with order [V3,A,V4,B] → GET /api/portfolio/featured
+    returned exactly those 4 in order → homepage Recent Work rendered exactly
+    those 4 tiles in the same order, label "Recent work" (not placeholder).
+  * Restored state after test (deleted 2 test videos, unfeatured the 2 real
+    ones) — back to 2 videos, 0 featured, homepage on placeholder fallback.
+
+Drag-to-reorder for featured projects (replaces the manual number input):
+  * AdminPortfolio now has a dedicated draggable "Homepage Recent Work" list
+    (featuredList state, native HTML5 DnD, same pattern as hero queue) sorted by
+    featured_order; rows show position #, thumb, title, a "not shown" tag for
+    index>=4, and a Remove (unfeature) button. Dragging persists immediately:
+    PATCHes each changed video's featured_order = new index, then reload.
+  * REMOVED the per-row "Feat. order" number input; the ★ Feature toggle in
+    each category row stays (to add/remove from featured).
+  * Verified E2E: dragged last row onto first → UI [B,V3,A,V4] → persisted
+    [B,V3,A,V4] via GET /api/portfolio/featured.
+  Testids: featured-list, featured-row-{id}, featured-drag-{id},
+  featured-unfeature-{id}, featured-count.
 GENUINELY UNDEPLOYED = only the Bunny reconcile feature (backend + .github workflow +
 dashboard tiles) and the not-yet-built Phase-2 upload code. Reconcile is backend/Railway +
 a GitHub Action; a Vercel website deploy does NOT carry it — no confirmation it's on Railway.
