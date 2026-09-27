@@ -160,6 +160,7 @@ export default function AdminPortfolio() {
   if (!profile) return null;
 
   const catIds = Object.keys(categories).length ? Object.keys(categories) : ["weddings", "birthdays", "naming", "lifestyle", "corporate"];
+  const featuredCount = videos.filter((v) => v.is_featured && v.is_active).length;
 
   const addVideo = async (e) => {
     e.preventDefault();
@@ -384,7 +385,22 @@ export default function AdminPortfolio() {
         {loading ? (
           <p className="font-mono text-xs uppercase tracking-widest text-zinc-500">Loading…</p>
         ) : (
-          catIds.map((cid) => {
+          <>
+            <div className={`${cardCls} flex items-center justify-between`} data-testid="featured-summary">
+              <div>
+                <h2 className="font-display text-lg">Homepage “Recent Work”</h2>
+                <p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                  Shows the 4 featured projects below, lowest featured-order first. Star a project and set its order.
+                </p>
+              </div>
+              <span
+                data-testid="featured-count"
+                className={`shrink-0 rounded-full px-3 py-1 font-mono text-[10px] uppercase tracking-widest ${featuredCount === 4 ? "bg-[#00E5FF]/15 text-[#00E5FF]" : "bg-amber-400/10 text-amber-400"}`}
+              >
+                {featuredCount} featured{featuredCount === 4 ? "" : " · homepage wants 4"}
+              </span>
+            </div>
+            {catIds.map((cid) => {
             const rows = videos.filter((v) => v.category === cid).sort((a, b) => a.display_order - b.display_order);
             const activeCount = rows.filter((r) => r.is_active).length;
             return (
@@ -420,6 +436,25 @@ export default function AdminPortfolio() {
                             className={`${inputCls} w-16 px-2 py-1`}
                           />
                         </label>
+                        <label className="flex items-center gap-1 text-[10px] font-mono uppercase text-zinc-500">
+                          Feat. order
+                          <input
+                            type="number"
+                            defaultValue={v.featured_order ?? 0}
+                            data-testid={`portfolio-featured-order-${v.id}`}
+                            disabled={!v.is_featured}
+                            onBlur={(e) => { const n = Number(e.target.value); if (n !== (v.featured_order ?? 0)) patchVideo(v.id, { featured_order: n }, "Featured order updated"); }}
+                            className={`${inputCls} w-16 px-2 py-1 disabled:opacity-40`}
+                          />
+                        </label>
+                        <button
+                          onClick={() => patchVideo(v.id, { is_featured: !v.is_featured }, v.is_featured ? "Unfeatured" : "Featured on homepage")}
+                          className={v.is_featured ? btnPrimary : btnMuted}
+                          data-testid={`portfolio-feature-${v.id}`}
+                          title="Show in the homepage Recent Work section"
+                        >
+                          {v.is_featured ? "★ Featured" : "☆ Feature"}
+                        </button>
                         <button
                           onClick={() => patchVideo(v.id, { is_active: !v.is_active }, v.is_active ? "Hidden" : "Now live")}
                           className={v.is_active ? btnPrimary : btnMuted}
@@ -434,7 +469,8 @@ export default function AdminPortfolio() {
                 )}
               </div>
             );
-          })
+            })}
+          </>
         )}
       </div>
     </div>
