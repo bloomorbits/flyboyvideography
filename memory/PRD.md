@@ -1413,6 +1413,43 @@ This is a Vercel domain-PRIMARY setting, NOT in repo code (next.config.mjs only
 has /admin -> portal). Cannot be fixed from code without risking a redirect
 loop. FIX = Vercel dashboard -> Project -> Settings -> Domains -> set apex
 (flyboyvideography.com) as Primary so www redirects to it. Owner action.
+
+## ADMIN-EDITABLE HOMEPAGE HERO VIDEO (Jun 2026)
+Feature: the homepage hero background is now an admin-editable YouTube video —
+autoplay muted + looping, with a small overlaid unmute button. Editable from
+the portal without a code deploy (DB-backed, ISR 60s).
+
+Built (REAL — verified this session):
+  * Migration 019 (`supabase_migration_019_site_settings.sql`): new generic
+    `site_settings` (key/value JSONB) table + updated_at trigger + narrow anon
+    SELECT RLS; seeds key `hero_video` = { youtube_video_id: 'MVE91GRuDVs' }
+    (owner-supplied default, https://youtu.be/MVE91GRuDVs).
+  * Backend `backend/site_settings.py` (registered server.py): public
+    GET /api/site-settings/hero-video (falls back to default id if table/row
+    absent — site never breaks) + admin PUT /api/admin/site-settings/hero-video
+    (reuses portfolio `_normalize_youtube_id` 422-guard + pricing `_require_admin`).
+    Verified: GET returns default id, PUT gated 401 without token.
+  * Website: `lib/hero-video.js` (ISR fetch + default fallback); `app/page.js`
+    now async, passes videoId to hero; `components/HeroPlayer.js` rewritten —
+    replaced local <video> with a cover-fill YouTube iframe (autoplay/mute/loop
+    via playlist=id; enablejsapi for postMessage unmute), REMOVED the old fake
+    "Showreel · placeholder" scrubber/timecode bar, added a small overlaid
+    unmute button; prefers-reduced-motion shows the poster instead. New CSS
+    `.hero-yt-cover` in globals.css. Verified in rendered HTML + screenshot:
+    iframe src = embed/MVE91GRuDVs, unmute button present, scrubber gone,
+    layout intact.
+  * Admin UI: hero-video field folded into AdminPortfolio (top card) — reuses
+    the existing dark admin theme + api.get/put. Compiled into the served
+    bundle (testids present, no JS errors).
+
+NOT verified this session (blocked):
+  * Full admin SAVE round-trip (PUT -> DB -> website reflects). No direct DB
+    access in preview (Supabase REST/service-role only, no psql/DATABASE_URL),
+    so Migration 019 is Supabase-Studio-only like 017/018. Until the owner
+    applies it, the site shows the DEFAULT video (which is the requested one)
+    and admin-save returns 500. DEPLOY STEPS: (1) apply 019 in Supabase Studio
+    (once — shared DB covers preview+prod), (2) Save to GitHub so Railway gets
+    site_settings.py + Vercel gets the hero changes.
 GENUINELY UNDEPLOYED = only the Bunny reconcile feature (backend + .github workflow +
 dashboard tiles) and the not-yet-built Phase-2 upload code. Reconcile is backend/Railway +
 a GitHub Action; a Vercel website deploy does NOT carry it — no confirmation it's on Railway.

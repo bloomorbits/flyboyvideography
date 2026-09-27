@@ -1,116 +1,79 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-const DURATION = 167; // 02:47 simulated reel length — placeholder scrubber until real showreel lands
-
-const tc = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-
-export default function HeroPlayer({ kicker, headline, sub, cta }) {
-  const [time, setTime] = useState(0);
+// Hero background is an admin-editable YouTube video (Migration 019): autoplays
+// muted + looping behind the headline, with a small overlaid unmute button so
+// visitors can opt into sound. Autoplay policies require mute=1 up front; the
+// unmute button talks to the player via the YouTube IFrame API (postMessage,
+// enablejsapi=1) so opting into sound doesn't reload/restart the clip.
+export default function HeroPlayer({ videoId, kicker, headline, sub, cta }) {
   const [muted, setMuted] = useState(true);
-  const trackRef = useRef(null);
-  const videoRef = useRef(null);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const iframeRef = useRef(null);
 
-  useEffect(() => {
-    const id = setInterval(() => setTime((t) => (t + 1) % DURATION), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  // Ambient background video: respect prefers-reduced-motion.
-  // Sequenced loading strategy: preload="none" on <video>, and only call
-  // .load()+.play() AFTER the poster image has finished loading. This
-  // gives the poster the full bandwidth on slow connections so users see
-  // a real hero background within a few seconds — the video takes over
-  // silently once it's ready. Without this, the browser races poster +
-  // video for the pipe and users see a black hero for 25-30s on Slow 4G.
+  // Respect prefers-reduced-motion: no autoplaying embed, show the poster.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const v = videoRef.current;
-    if (!v) return;
-
     const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let cancelled = false;
-
-    const posterReady = new Promise((resolve) => {
-      const url = v.poster;
-      if (!url) return resolve();
-      const img = new Image();
-      img.onload = resolve;
-      img.onerror = resolve; // never block video on poster fetch failure
-      img.src = url;
-    });
-
-    const kickoff = async () => {
-      await posterReady;
-      if (cancelled) return;
-      if (mql.matches) {
-        // reduced-motion users: poster stays, no video fetch at all
-        return;
-      }
-      // With preload="none", .load() actually initiates the fetch.
-      v.load();
-      const p = v.play();
-      if (p && typeof p.catch === "function") p.catch(() => {});
-    };
-    kickoff();
-
-    const onMotionPref = () => {
-      if (mql.matches) {
-        v.pause();
-        v.currentTime = 0;
-      } else if (v.paused) {
-        v.load();
-        const p = v.play();
-        if (p && typeof p.catch === "function") p.catch(() => {});
-      }
-    };
-    mql.addEventListener("change", onMotionPref);
-
-    return () => {
-      cancelled = true;
-      mql.removeEventListener("change", onMotionPref);
-    };
+    setReducedMotion(mql.matches);
+    const onChange = () => setReducedMotion(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
   }, []);
 
-  const seek = (e) => {
-    const rect = trackRef.current.getBoundingClientRect();
-    const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-    setTime(Math.floor(pct * DURATION));
+  const command = (func, args = []) => {
+    const w = iframeRef.current?.contentWindow;
+    if (!w) return;
+    w.postMessage(JSON.stringify({ event: "command", func, args }), "*");
   };
+
+  const toggleMute = () => {
+    if (muted) {
+      command("unMute");
+      command("setVolume", [100]);
+      command("playVideo");
+      setMuted(false);
+    } else {
+      command("mute");
+      setMuted(true);
+    }
+  };
+
+  // loop=1 needs playlist=<id> for a single video; enablejsapi=1 powers unmute.
+  const params = new URLSearchParams({
+    autoplay: "1",
+    mute: "1",
+    loop: "1",
+    playlist: videoId,
+    controls: "0",
+    modestbranding: "1",
+    rel: "0",
+    playsinline: "1",
+    enablejsapi: "1",
+    disablekb: "1",
+    fs: "0",
+    iv_load_policy: "3",
+  });
+  const src = `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
 
   return (
     <section data-cursor="video" className="relative overflow-hidden bg-coal text-cream">
       <div aria-hidden className="pointer-events-none absolute inset-0">
-        {/*
-          Preload the poster with high priority so it's fetched ahead of
-          the video sources — critical for slow-connection first paint.
-          WebP is served (2026 browser baseline supports it universally);
-          the JPG variant is kept in /public/videos as a fallback but not
-          preloaded here. React 19 hoists <link> into <head> automatically.
-        */}
-        <link
-          rel="preload"
-          as="image"
-          href="/videos/hero-poster.webp"
-          type="image/webp"
-          fetchPriority="high"
-        />
-        <video
-          ref={videoRef}
-          className="hero-video-bg"
-          data-testid="hero-background-video"
-          poster="/videos/hero-poster.webp"
-          muted
-          loop
-          playsInline
-          preload="none"
-          aria-hidden="true"
-          tabIndex={-1}
-        >
-          {/* WebM first for browsers that support it (smaller); MP4 fallback for Safari */}
-          <source src="/videos/hero-loop.webm" type="video/webm" />
-          <source src="/videos/hero-loop.mp4" type="video/mp4" />
-        </video>
+        {reducedMotion ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/videos/hero-poster.webp" alt="" className="hero-video-bg" />
+        ) : (
+          <div className="hero-yt-cover">
+            <iframe
+              ref={iframeRef}
+              data-testid="hero-youtube-embed"
+              src={src}
+              title="Showreel"
+              allow="autoplay; encrypted-media; picture-in-picture"
+              tabIndex={-1}
+            />
+          </div>
+        )}
         <div className="hero-scrim" />
         <div className="grain" />
       </div>
@@ -124,53 +87,25 @@ export default function HeroPlayer({ kicker, headline, sub, cta }) {
         {cta}
       </div>
 
-      <div className="relative z-10 border-t border-cream/10">
-        <div className="mx-auto flex max-w-6xl items-center gap-5 px-6 py-5">
-          <button
-            data-testid="hero-mute-toggle"
-            onClick={() => setMuted(!muted)}
-            aria-label={muted ? "Unmute" : "Mute"}
-            className="inline-flex h-11 w-11 items-center justify-center text-cream/70 transition-colors hover:text-cream"
-          >
-            {muted ? (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" />
-              </svg>
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
-              </svg>
-            )}
-          </button>
-          <div
-            ref={trackRef}
-            data-testid="hero-scrubber"
-            onClick={seek}
-            role="slider"
-            aria-label="Reel position"
-            aria-valuemin={0}
-            aria-valuemax={DURATION}
-            aria-valuenow={time}
-            className="group relative h-6 flex-1"
-          >
-            <div className="absolute top-1/2 h-[3px] w-full -translate-y-1/2 rounded bg-cream/20" />
-            <div
-              className="absolute top-1/2 h-[3px] -translate-y-1/2 rounded bg-cream transition-[width] duration-500 ease-linear"
-              style={{ width: `${(time / DURATION) * 100}%` }}
-            />
-            <div
-              className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cream opacity-0 transition-opacity group-hover:opacity-100"
-              style={{ left: `${(time / DURATION) * 100}%` }}
-            />
-          </div>
-          <p data-testid="hero-timecode" className="font-mono text-xs tracking-widest text-cream/80">
-            {tc(time)} <span className="text-cream/40">/ {tc(DURATION)}</span>
-          </p>
-          <p className="hidden font-mono text-[10px] uppercase tracking-[0.25em] text-cream/40 md:block">
-            Showreel · placeholder
-          </p>
-        </div>
-      </div>
+      {/* Small unmute button overlaid on the video */}
+      {!reducedMotion && (
+        <button
+          data-testid="hero-mute-toggle"
+          onClick={toggleMute}
+          aria-label={muted ? "Unmute video" : "Mute video"}
+          className="absolute bottom-6 right-6 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-cream/30 bg-coal/50 text-cream/80 backdrop-blur transition-colors hover:border-cream/70 hover:text-cream"
+        >
+          {muted ? (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" />
+            </svg>
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+            </svg>
+          )}
+        </button>
+      )}
     </section>
   );
 }
