@@ -1510,6 +1510,18 @@ queue editor (weight input per row + dropzone) compiled into the served bundle.
 Shared DB reset to default + test storage objects deleted after testing.
 NOTE (dev only): Next.js dev fetch-cache made poster changes look stale in
 preview; ISR revalidate:60 self-heals (≤60s) — not a prod issue.
+
+## HERO VIDEO — DRAG-TO-REORDER QUEUE (Jun 2026)
+Admins can now drag hero videos into a preferred order. No other changes.
+Refactored the admin hero state from three parallel arrays (heroUrls/heroWeights/
+heroIds) into a single heroRows [{url, weight, id}] so reordering stays aligned
+and correct (also fixed a latent thumbnail-misalignment on row removal).
+Native HTML5 DnD (no new dependency): a grip handle per row is draggable
+(dragIndexRef), rows are drop targets (onDragOver highlight + onDrop →
+moveHeroRow splice). Order persists on Save (backend already preserves order).
+Verified via authed Playwright: seeded [A,B,C] → dragged last row onto first →
+UI became [C,A,B] → Saved → GET persisted [C,A,B]. Shared DB reset to default
+after testing. Testids: hero-video-row-{i}, hero-video-drag-{i}.
 GENUINELY UNDEPLOYED = only the Bunny reconcile feature (backend + .github workflow +
 dashboard tiles) and the not-yet-built Phase-2 upload code. Reconcile is backend/Railway +
 a GitHub Action; a Vercel website deploy does NOT carry it — no confirmation it's on Railway.

@@ -44,23 +44,23 @@ export default function AdminPortfolio() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ category: "weddings", youtube: "", title: "", display_order: 0, is_active: true });
 
-  // Homepage hero videos (site_settings, Migration 019) — weighted queue + an
-  // uploaded poster, DB-backed, live in 60s. Weighted rotation runs client-side.
-  const [heroUrls, setHeroUrls] = useState([""]);
-  const [heroWeights, setHeroWeights] = useState([1]);
+  // Homepage hero videos (site_settings, Migration 019) — weighted, reorderable
+  // queue + an uploaded poster, DB-backed, live in 60s. Rotation runs client-side.
+  const [heroRows, setHeroRows] = useState([{ url: "", weight: 1, id: "" }]);
   const [heroPoster, setHeroPoster] = useState("");
-  const [heroIds, setHeroIds] = useState([]);
   const [heroBusy, setHeroBusy] = useState(false);
   const [posterBusy, setPosterBusy] = useState(false);
   const posterFileRef = useRef(null);
+  const dragIndexRef = useRef(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
 
   const loadHero = useCallback(async () => {
     try {
       const { data } = await api.get("/site-settings/hero-video");
       const vids = data.videos || [];
-      setHeroIds(vids.map((v) => v.id));
-      setHeroUrls(vids.length ? vids.map((v) => `https://youtu.be/${v.id}`) : [""]);
-      setHeroWeights(vids.length ? vids.map((v) => v.weight || 1) : [1]);
+      setHeroRows(vids.length
+        ? vids.map((v) => ({ url: `https://youtu.be/${v.id}`, weight: v.weight || 1, id: v.id }))
+        : [{ url: "", weight: 1, id: "" }]);
       setHeroPoster(data.poster_url || "");
     } catch {
       /* non-fatal — the public site falls back to the default video */
@@ -82,24 +82,32 @@ export default function AdminPortfolio() {
   useEffect(() => { if (isAdmin) reload(); }, [isAdmin, reload]);
   useEffect(() => { if (isAdmin) loadHero(); }, [isAdmin, loadHero]);
 
-  const setHeroUrlAt = (i, val) => setHeroUrls((prev) => prev.map((u, idx) => (idx === i ? val : u)));
-  const setHeroWeightAt = (i, val) => setHeroWeights((prev) => prev.map((w, idx) => (idx === i ? val : w)));
-  const addHeroUrl = () => { setHeroUrls((p) => [...p, ""]); setHeroWeights((p) => [...p, 1]); };
-  const removeHeroUrl = (i) => {
-    setHeroUrls((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
-    setHeroWeights((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+  const setHeroRowField = (i, field, val) =>
+    setHeroRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: val } : r)));
+  const addHeroRow = () => setHeroRows((p) => [...p, { url: "", weight: 1, id: "" }]);
+  const removeHeroRow = (i) => setHeroRows((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+
+  // Drag-to-reorder the hero queue (native HTML5 DnD; order persists on Save).
+  const moveHeroRow = (from, to) => {
+    if (from == null || to == null || from === to) return;
+    setHeroRows((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
   };
 
   const persistHero = async (posterUrl) => {
-    const videos = heroUrls
-      .map((u, i) => ({ youtube: u.trim(), weight: Math.max(1, Math.min(10, Number(heroWeights[i]) || 1)) }))
+    const videos = heroRows
+      .map((r) => ({ youtube: r.url.trim(), weight: Math.max(1, Math.min(10, Number(r.weight) || 1)) }))
       .filter((v) => v.youtube);
     if (!videos.length) { toast.error("Add at least one YouTube URL or video ID"); return null; }
     const { data } = await api.put("/admin/site-settings/hero-video", { videos, poster_url: posterUrl ?? null });
     const vids = data.videos || [];
-    setHeroIds(vids.map((v) => v.id));
-    setHeroUrls(vids.length ? vids.map((v) => `https://youtu.be/${v.id}`) : [""]);
-    setHeroWeights(vids.length ? vids.map((v) => v.weight || 1) : [1]);
+    setHeroRows(vids.length
+      ? vids.map((v) => ({ url: `https://youtu.be/${v.id}`, weight: v.weight || 1, id: v.id }))
+      : [{ url: "", weight: 1, id: "" }]);
     return data;
   };
 
@@ -216,11 +224,32 @@ export default function AdminPortfolio() {
           </p>
 
           <div className="space-y-3" data-testid="hero-video-queue">
-            {heroUrls.map((url, i) => (
-              <div key={i} className="flex items-center gap-3">
-                {heroIds[i] && (
+            {heroRows.map((row, i) => (
+              <div
+                key={i}
+                onDragOver={(e) => { e.preventDefault(); if (dragOverIndex !== i) setDragOverIndex(i); }}
+                onDrop={(e) => { e.preventDefault(); moveHeroRow(dragIndexRef.current, i); dragIndexRef.current = null; setDragOverIndex(null); }}
+                data-testid={`hero-video-row-${i}`}
+                className={`flex items-center gap-3 rounded-md transition-colors ${dragOverIndex === i ? "bg-[#00E5FF]/10 ring-1 ring-[#00E5FF]/40" : ""}`}
+              >
+                <span
+                  draggable
+                  onDragStart={() => { dragIndexRef.current = i; }}
+                  onDragEnd={() => { dragIndexRef.current = null; setDragOverIndex(null); }}
+                  aria-label="Drag to reorder"
+                  title="Drag to reorder"
+                  data-testid={`hero-video-drag-${i}`}
+                  className="flex h-9 w-6 shrink-0 cursor-grab items-center justify-center text-zinc-500 hover:text-zinc-200 active:cursor-grabbing"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
+                    <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
+                    <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
+                  </svg>
+                </span>
+                {row.id && (
                   <img
-                    src={`https://i.ytimg.com/vi/${heroIds[i]}/hqdefault.jpg`}
+                    src={`https://i.ytimg.com/vi/${row.id}/hqdefault.jpg`}
                     alt=""
                     className="hidden h-12 w-20 shrink-0 rounded object-cover sm:block"
                     data-testid={`hero-video-thumb-${i}`}
@@ -228,8 +257,8 @@ export default function AdminPortfolio() {
                 )}
                 <input
                   data-testid={`hero-video-input-${i}`}
-                  value={url}
-                  onChange={(e) => setHeroUrlAt(i, e.target.value)}
+                  value={row.url}
+                  onChange={(e) => setHeroRowField(i, "url", e.target.value)}
                   placeholder="https://youtu.be/… or dQw4w9WgXcQ"
                   className={inputCls}
                 />
@@ -240,16 +269,16 @@ export default function AdminPortfolio() {
                     min="1"
                     max="10"
                     data-testid={`hero-video-weight-${i}`}
-                    value={heroWeights[i] ?? 1}
-                    onChange={(e) => setHeroWeightAt(i, e.target.value)}
+                    value={row.weight ?? 1}
+                    onChange={(e) => setHeroRowField(i, "weight", e.target.value)}
                     title="Higher = appears more often in the rotation"
                     className={`${inputCls} w-16`}
                   />
                 </div>
                 <button
                   type="button"
-                  onClick={() => removeHeroUrl(i)}
-                  disabled={heroUrls.length <= 1}
+                  onClick={() => removeHeroRow(i)}
+                  disabled={heroRows.length <= 1}
                   aria-label="Remove video"
                   data-testid={`hero-video-remove-${i}`}
                   className={`${btnMuted} shrink-0 self-end`}
@@ -260,7 +289,7 @@ export default function AdminPortfolio() {
             ))}
           </div>
 
-          <button type="button" onClick={addHeroUrl} className={`${btnMuted} mt-3`} data-testid="hero-video-add-url">
+          <button type="button" onClick={addHeroRow} className={`${btnMuted} mt-3`} data-testid="hero-video-add-url">
             + Add another video
           </button>
 
