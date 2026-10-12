@@ -56,7 +56,10 @@ alter table public.bookings add  constraint bookings_secondary_phone_e164_chk
 -- 3) Phone E.164 trigger — fires ONLY when phone is set/changed -------------
 --    (so legacy junk-phone rows survive, and unrelated-column UPDATEs succeed).
 create or replace function public.enforce_phone_e164()
-returns trigger language plpgsql as $$
+returns trigger
+language plpgsql
+set search_path = public
+as $$
 begin
   -- TG_OP='INSERT' short-circuits before OLD is referenced (OLD is unset on INSERT).
   if NEW.phone is not null

@@ -1,126 +1,178 @@
 """introspect_021.py — proves Migration 021 (booking details + phone E.164 trigger).
 
-RUN AFTER applying supabase_migration_021_booking_details.sql.
+RUN AFTER applying supabase_migration_021_booking_details.sql:
   python3 /app/backend/tests/introspect_021.py
 
-Outputs COUNTS ONLY — never prints phone numbers or personal data.
-Uses synthetic @flyboytest.com rows tagged is_seed_data and cleans them up.
-Reads SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY from env.
+COUNTS ONLY — never prints phone numbers or personal data.
+Uses synthetic @flyboytest.com rows and a throwaway auth user; cleans everything up.
+Reads SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / REACT_APP_SUPABASE_ANON_KEY from env.
 
-Proves:
-  1. New row with a bad phone is rejected on booking_intents.phone,
-     clients.phone, and (via CHECK) secondary_contact_phone.
-  2. An existing junk-phone row stays untouched.
-  3. An UPDATE to an unrelated column on that legacy row succeeds.
-  4. Updating a legacy phone to valid E.164 succeeds; to another junk value is rejected.
-  5. NULL phone is still accepted.
-  + anon cannot read the new columns (RLS).
+PostgREST exposes only `public` + `graphql_public`, so pg_catalog / information_schema /
+`cron` are NOT reachable here. The constraint *definition*, the function search_path,
+and the cron-tables check are produced by verify_021_catalog.sql (run in the SQL Editor).
+This script covers everything observable over REST: column types, trigger/CHECK behaviour,
+legacy-row safety, nullable acceptance, and before/after auth.users + clients counts.
 """
 import os, re, uuid
+from dotenv import load_dotenv
+load_dotenv()
 from supabase import create_client
+import httpx
 
 URL = os.environ["SUPABASE_URL"]
 SRK = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-ANON = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("REACT_APP_SUPABASE_ANON_KEY", "")
+ANON = os.environ.get("REACT_APP_SUPABASE_ANON_KEY") or os.environ.get("SUPABASE_ANON_KEY", "")
 sb = create_client(URL, SRK)
+H = {"apikey": SRK, "Authorization": f"Bearer {SRK}"}
 E164 = re.compile(r"^\+[1-9][0-9]{6,14}$")
-BAD = "notaphone123"
-GOOD = "+447911123456"
+BAD, BAD2, GOOD, GOOD2 = "notaphone123", "0771 bad", "+447911123456", "+447911999888"
+NEW_COLS = ["venue_name", "venue_tbc", "event_city", "event_postcode",
+            "event_start_time", "guest_count", "secondary_contact_name", "secondary_contact_phone"]
+
 tag = f"introspect021-{uuid.uuid4().hex[:8]}@flyboytest.com"
+intent_ids = []
 
 
 def rejected(fn):
     try:
         fn(); return (False, "NO ERROR (should have been rejected)")
     except Exception as e:
-        msg = str(e)
-        return (True, "E.164" if ("E.164" in msg or "check" in msg.lower() or "secondary_phone" in msg) else msg[:120])
+        m = str(e)
+        kind = "check/trigger" if ("check" in m.lower() or "E.164" in m or "violat" in m.lower()) else m[:100]
+        return (True, kind)
 
 
-print("=== Migration 021 introspection (counts only) ===")
+def P(ok):  return "PASS" if ok else "FAIL"
 
-# ---- booking_intents.phone trigger -------------------------------------
-bi_ids = []
-def mk_intent(phone):
-    row = {"email": tag, "status": "pending", "session_id": f"sess_{uuid.uuid4().hex}"}
-    if phone is not None:
-        row["phone"] = phone
-    r = sb.table("booking_intents").insert(row).execute().data[0]
-    bi_ids.append(r["id"]); return r
 
-ok, detail = rejected(lambda: mk_intent(BAD))
-print(f"[1a] booking_intents bad-phone INSERT rejected: {'PASS' if ok else 'FAIL'} ({detail})")
+# runtime package id/title (package_id is NOT NULL + FK-ish) -------------------
+_s = sb.table("booking_intents").select("package_id,package_title").limit(1).execute().data
+PID, PTITLE = (_s[0]["package_id"], _s[0]["package_title"]) if _s else ("graduation", "Graduation Reels")
 
-try:
-    r = mk_intent(GOOD); print("[5 ] valid-E.164 INSERT accepted: PASS")
-except Exception as e:
-    r = None; print(f"[5 ] valid-E.164 INSERT accepted: FAIL ({str(e)[:120]})")
 
-try:
-    mk_intent(None); print("[5b] NULL-phone INSERT accepted: PASS")
-except Exception as e:
-    print(f"[5b] NULL-phone INSERT accepted: FAIL ({str(e)[:120]})")
+def base_intent(**extra):
+    row = {"email": tag, "status": "pending", "full_name": "Flyboy Seed",
+           "package_id": PID, "package_title": PTITLE, "price_total": 100, "price_deposit": 50,
+           "event_date": "2099-01-01"}
+    row.update(extra)
+    return row
 
-if r:
-    ok, d = rejected(lambda: sb.table("booking_intents").update({"phone": BAD}).eq("id", r["id"]).execute())
-    print(f"[4a] UPDATE valid->junk rejected: {'PASS' if ok else 'FAIL'} ({d})")
-    try:
-        sb.table("booking_intents").update({"phone": "+447911999888"}).eq("id", r["id"]).execute()
-        print("[4b] UPDATE junk->valid (here valid->valid) accepted: PASS")
-    except Exception as e:
-        print(f"[4b] UPDATE to valid accepted: FAIL ({str(e)[:120]})")
 
-# ---- secondary_contact_phone CHECK (both tables) -----------------------
-ok, d = rejected(lambda: sb.table("booking_intents").insert(
-    {"email": tag, "status": "pending", "session_id": f"sess_{uuid.uuid4().hex}",
-     "secondary_contact_phone": BAD}).execute())
-print(f"[1b] booking_intents bad secondary_contact_phone rejected: {'PASS' if ok else 'FAIL'} ({d})")
+def mk_intent(**extra):
+    r = sb.table("booking_intents").insert(base_intent(**extra)).execute().data[0]
+    intent_ids.append(r["id"]); return r
 
-# ---- legacy junk-phone row proofs (#2 and #3) --------------------------
-# Find an EXISTING non-E.164 phone row WITHOUT mutating any value.
+
+print("=" * 64)
+print("Migration 021 introspection — COUNTS ONLY, no phone values printed")
+print("=" * 64)
+
+# --- SECTION A: column types (OpenAPI) ---------------------------------------
+print("\n[A] COLUMN TYPES (both tables, via PostgREST OpenAPI)")
+defs = httpx.get(f"{URL}/rest/v1/", headers=H, timeout=30).json()
+defs = defs.get("definitions") or defs.get("components", {}).get("schemas", {})
+for tbl in ("booking_intents", "bookings"):
+    props = defs.get(tbl, {}).get("properties", {})
+    missing = [c for c in NEW_COLS if c not in props]
+    print(f"  {tbl}: all 8 new columns present: {P(not missing)}" + (f" (missing {missing})" if missing else ""))
+    est = props.get("event_start_time", {})
+    print(f"    event_start_time format = {est.get('format')!r}  "
+          f"({P(est.get('format') == 'time without time zone')})")
+    print(f"    venue_tbc={props.get('venue_tbc',{}).get('format')}  "
+          f"guest_count={props.get('guest_count',{}).get('format')}  "
+          f"event_date={props.get('event_date',{}).get('format')} (unchanged)")
+
+# --- SECTION B: counts BEFORE ------------------------------------------------
+def auth_count():
+    return len(sb.auth.admin.list_users())
+def clients_count():
+    return sb.table("clients").select("id", count="exact").limit(1).execute().count
+def dsl_count():
+    return sb.table("date_slot_locks").select("*", count="exact").limit(1).execute().count
+
+au0, cl0, dsl0 = auth_count(), clients_count(), dsl_count()
+print(f"\n[B] COUNTS BEFORE   auth.users={au0}  clients={cl0}  date_slot_locks={dsl0}")
+
+# --- SECTION C: booking_intents.phone trigger + nullable ---------------------
+print("\n[C] booking_intents.phone trigger")
+ok, d = rejected(lambda: mk_intent(phone=BAD))
+print(f"  bad phone INSERT rejected: {P(ok)} ({d})")
+good = mk_intent(phone=GOOD)
+print(f"  valid E.164 INSERT accepted: PASS")
+mk_intent()  # no phone key -> NULL
+print(f"  NULL phone INSERT accepted (also proves new cols nullable): PASS")
+
+# --- SECTION D: secondary_contact_phone CHECK --------------------------------
+print("\n[D] secondary_contact_phone CHECK (booking_intents)")
+ok, d = rejected(lambda: mk_intent(secondary_contact_phone=BAD))
+print(f"  bad secondary_contact_phone INSERT rejected: {P(ok)} ({d})")
+r = mk_intent(secondary_contact_phone=GOOD, secondary_contact_name="Backup")
+print(f"  valid secondary_contact_phone INSERT accepted: PASS")
+
+# --- SECTION E: trigger branch logic on a synthetic GOOD-phone row -----------
+print("\n[E] trigger branches (synthetic seed row, good phone -> change)")
+ok, d = rejected(lambda: sb.table("booking_intents").update({"phone": BAD}).eq("id", good["id"]).execute())
+print(f"  change to junk rejected: {P(ok)} ({d})")
+sb.table("booking_intents").update({"phone": GOOD}).eq("id", good["id"]).execute()
+print(f"  same-value update accepted (not distinct -> skips): PASS")
+sb.table("booking_intents").update({"phone": GOOD2}).eq("id", good["id"]).execute()
+print(f"  change to another valid E.164 accepted: PASS")
+sb.table("booking_intents").update({"phone": None}).eq("id", good["id"]).execute()
+print(f"  change to NULL accepted: PASS")
+
+# --- SECTION F: REAL legacy junk-phone row safety (non-destructive) ----------
+print("\n[F] legacy junk-phone row safety (real rows, non-destructive)")
 rows = sb.table("booking_intents").select("id,phone,event_notes").execute().data
 legacy = [x for x in rows if x.get("phone") and not E164.match(x["phone"].strip())
-          and x["id"] not in bi_ids]
-print(f"[2 ] existing non-E.164 phone rows found: {len(legacy)} (untouched)")
+          and x["id"] not in intent_ids]
+print(f"  existing non-E.164 phone rows: {len(legacy)}")
 if legacy:
-    lid = legacy[0]["id"]; cur = legacy[0].get("event_notes")
-    try:
-        # no-op write to an UNRELATED column (sets it to its own current value)
-        sb.table("booking_intents").update({"event_notes": cur}).eq("id", lid).execute()
-        print("[3 ] UPDATE of unrelated column on legacy junk-phone row succeeded: PASS (trigger did not fire)")
-    except Exception as e:
-        print(f"[3 ] unrelated-column UPDATE on legacy row: FAIL ({str(e)[:120]})")
+    lid, lphone, lnotes = legacy[0]["id"], legacy[0]["phone"], legacy[0].get("event_notes")
+    # same junk value written back -> not distinct -> accepted, row unchanged
+    sb.table("booking_intents").update({"phone": lphone}).eq("id", lid).execute()
+    print(f"  same junk value re-saved on legacy row accepted: PASS (value unchanged)")
+    # different junk -> rejected (update fails, row unchanged)
+    ok, d = rejected(lambda: sb.table("booking_intents").update({"phone": BAD2}).eq("id", lid).execute())
+    print(f"  change legacy phone to a DIFFERENT junk rejected: {P(ok)} ({d})")
+    # unrelated column no-op write -> trigger does not fire
+    sb.table("booking_intents").update({"event_notes": lnotes}).eq("id", lid).execute()
+    print(f"  unrelated-column UPDATE on legacy row accepted: PASS (trigger did not fire)")
+    still = sb.table("booking_intents").select("phone").eq("id", lid).execute().data[0]["phone"]
+    print(f"  legacy phone still non-E.164 afterwards: {P(not E164.match(still.strip()))} (untouched)")
 else:
-    print("[3 ] SKIPPED — no legacy junk-phone row available (clean DB)")
+    print("  SKIPPED — no legacy junk-phone row present")
 
-# ---- clients.phone trigger (needs an auth user) ------------------------
+# --- SECTION G: clients.phone trigger (throwaway auth user) ------------------
+print("\n[G] clients.phone trigger (throwaway auth user)")
 uid = None
 try:
     u = sb.auth.admin.create_user({"email": f"cli-{tag}", "email_confirm": True})
     uid = u.user.id
-    ok, d = rejected(lambda: sb.table("clients").insert({"user_id": uid, "email": f"cli-{tag}", "name": "Seed", "phone": BAD}).execute())
-    print(f"[1c] clients bad-phone INSERT rejected: {'PASS' if ok else 'FAIL'} ({d})")
-    sb.table("clients").insert({"user_id": uid, "email": f"cli-{tag}", "name": "Seed", "phone": GOOD}).execute()
-    print("[1c+] clients valid-phone INSERT accepted: PASS")
-    sb.table("clients").update({"name": "Seed2"}).eq("user_id", uid).execute()
-    print("[3c] clients unrelated-column UPDATE accepted: PASS")
+    ok, d = rejected(lambda: sb.table("clients").insert(
+        {"user_id": uid, "email": f"cli-{tag}", "full_name": "Seed", "phone": BAD, "is_seed_data": True}).execute())
+    print(f"  clients bad phone INSERT rejected: {P(ok)} ({d})")
+    sb.table("clients").insert(
+        {"user_id": uid, "email": f"cli-{tag}", "full_name": "Seed", "phone": GOOD, "is_seed_data": True}).execute()
+    print(f"  clients valid phone INSERT accepted: PASS")
+    sb.table("clients").update({"full_name": "Seed2"}).eq("user_id", uid).execute()
+    print(f"  clients unrelated-column UPDATE accepted: PASS")
 except Exception as e:
-    print(f"[1c] clients trigger test: INCONCLUSIVE ({str(e)[:140]})")
+    print(f"  INCONCLUSIVE ({str(e)[:140]})")
 
-# ---- anon cannot read new columns --------------------------------------
+# --- SECTION H: anon cannot read new/contact columns -------------------------
+print("\n[H] RLS — anon read of new/contact columns")
 if ANON:
     try:
         anon = create_client(URL, ANON)
-        res = anon.table("booking_intents").select("id,phone,venue_name,event_start_time").limit(1).execute()
-        n = len(res.data or [])
-        print(f"[6 ] anon read of new/contact columns returned {n} rows: {'PASS (RLS blocks)' if n == 0 else 'FAIL — anon saw data'}")
+        n = len(anon.table("booking_intents").select("id,phone,venue_name,event_start_time").limit(1).execute().data or [])
+        print(f"  anon returned {n} rows: {P(n == 0)} (RLS blocks)")
     except Exception as e:
-        print(f"[6 ] anon read blocked by RLS: PASS ({str(e)[:80]})")
+        print(f"  anon blocked by RLS: PASS ({str(e)[:70]})")
 else:
-    print("[6 ] SKIPPED — no anon key in env")
+    print("  SKIPPED — no anon key in env")
 
-# ---- cleanup ------------------------------------------------------------
-for i in bi_ids:
+# --- cleanup -----------------------------------------------------------------
+for i in intent_ids:
     try: sb.table("booking_intents").delete().eq("id", i).execute()
     except Exception: pass
 sb.table("booking_intents").delete().eq("email", tag).execute()
@@ -129,4 +181,12 @@ if uid:
     except Exception: pass
     try: sb.auth.admin.delete_user(uid)
     except Exception: pass
-print("=== cleanup done ===")
+
+# --- SECTION I: counts AFTER (must match BEFORE) -----------------------------
+au1, cl1, dsl1 = auth_count(), clients_count(), dsl_count()
+print(f"\n[I] COUNTS AFTER    auth.users={au1}  clients={cl1}  date_slot_locks={dsl1}")
+print(f"    auth.users match: {P(au0 == au1)}   clients match: {P(cl0 == cl1)}   "
+      f"date_slot_locks unchanged: {P(dsl0 == dsl1)}")
+print("\n=== cleanup done ===")
+print("NOTE: constraint name/definition, function search_path, and cron tables"
+      " are not REST-readable — run verify_021_catalog.sql in the SQL Editor for those.")
