@@ -131,6 +131,18 @@ function BookPageInner() {
   const [minorsInvolved, setMinorsInvolved] = useState(false);
   const [guardianName, setGuardianName] = useState("");
   const [safeguardingAccepted, setSafeguardingAccepted] = useState(false);
+  // Compulsory booking details (Migration 021 / Step 2). Server enforces these
+  // with per-field 422s; the mirror below is UX only.
+  const [venueName, setVenueName] = useState("");
+  const [venueTbc, setVenueTbc] = useState(false);
+  const [eventCity, setEventCity] = useState("");
+  const [eventPostcode, setEventPostcode] = useState("");
+  const [eventStartTime, setEventStartTime] = useState("");
+  const [guestCount, setGuestCount] = useState("");
+  const [secondaryName, setSecondaryName] = useState("");
+  const [secondaryPhone, setSecondaryPhone] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+  const fieldRefs = useRef({});
   const [blocked, setBlocked] = useState([]);
   const [availLoading, setAvailLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -178,13 +190,53 @@ function BookPageInner() {
   const priceTotal = tier?.price || 0;
   const priceDeposit = priceTotal * DEPOSIT_PERCENTAGE;
 
+  // Client-side mirror of the server's required-field rules (booking.py). Keep
+  // the messages identical to the server so the experience is seamless.
+  function validateDetails() {
+    const errs = {};
+    if (!fullName.trim()) errs.full_name = "Please enter your full name.";
+    if (!email.trim()) errs.email = "Please enter your email.";
+    if (!phone.trim()) errs.phone = "A contact phone number is required.";
+    if (!eventStartTime.trim()) errs.event_start_time = "An event start time is required.";
+    if (!eventCity.trim()) errs.event_city = "The event town or city is required.";
+    if (!venueTbc && !venueName.trim()) errs.venue_name = "Enter the venue name, or tick 'venue to be confirmed'.";
+    if (!venueTbc && !eventPostcode.trim()) errs.event_postcode = "A venue postcode is required when the venue is known.";
+    return errs;
+  }
+
+  // Pay button mirrors the server rules so it only enables when a submit would pass.
+  const detailsComplete =
+    !!fullName.trim() && !!email.trim() && !!phone.trim() && !!eventStartTime.trim() &&
+    !!eventCity.trim() && (venueTbc || (!!venueName.trim() && !!eventPostcode.trim()));
+
+  function focusField(name) {
+    const el = fieldRefs.current[name];
+    if (el && typeof el.focus === "function") {
+      el.focus();
+      if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }
+
+  function clearFieldError(name) {
+    setFieldErrors((prev) => {
+      if (!prev[name]) return prev;
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
-    if (!fullName.trim() || !email.trim()) {
-      setError("Name and email are required.");
+    const clientErrs = validateDetails();
+    if (Object.keys(clientErrs).length) {
+      setFieldErrors(clientErrs);
+      focusField(Object.keys(clientErrs)[0]);
+      setError("Please fix the highlighted fields.");
       return;
     }
+    setFieldErrors({});
     setSubmitting(true);
     try {
       const r = await fetch(`${API_BASE}/api/booking/checkout`, {
@@ -199,6 +251,15 @@ function BookPageInner() {
           phone: phone.trim() || null,
           event_notes: eventNotes.trim() || null,
           origin_url: window.location.origin,
+          // Compulsory booking details (Migration 021 / Step 2)
+          venue_name: venueTbc ? null : (venueName.trim() || null),
+          venue_tbc: venueTbc,
+          event_city: eventCity.trim() || null,
+          event_postcode: eventPostcode.trim() || null,
+          event_start_time: eventStartTime || null,
+          guest_count: guestCount === "" ? null : Number(guestCount),
+          secondary_contact_name: secondaryName.trim() || null,
+          secondary_contact_phone: secondaryPhone.trim() || null,
           // Consent (server also enforces — frontend is UX)
           tc_accepted: tcAccepted,
           model_release_opted_in: modelReleaseOptedIn,
@@ -209,7 +270,17 @@ function BookPageInner() {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {
-        setError(j.detail || `Something went wrong (HTTP ${r.status}). Try again.`);
+        // New per-field 422 shape: { detail: { errors: [{ field, message }] } }
+        if (j && j.detail && typeof j.detail === "object" && Array.isArray(j.detail.errors)) {
+          const fe = {};
+          j.detail.errors.forEach((er) => { if (er && er.field) fe[er.field] = er.message; });
+          setFieldErrors(fe);
+          const first = j.detail.errors[0]?.field;
+          if (first) focusField(first);
+          setError("Please fix the highlighted fields.");
+        } else {
+          setError((typeof j.detail === "string" && j.detail) || `Something went wrong (HTTP ${r.status}). Try again.`);
+        }
         setSubmitting(false);
         return;
       }
@@ -356,45 +427,197 @@ function BookPageInner() {
                 <input
                   id="fullName"
                   data-testid="input-full-name"
+                  ref={(el) => (fieldRefs.current.full_name = el)}
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  autoComplete="name"
+                  onChange={(e) => { setFullName(e.target.value); clearFieldError("full_name"); }}
                   required
-                  className="mt-2 w-full rounded-lg border border-ink/20 bg-cream px-4 py-3 text-sm focus:border-ink focus:outline-none"
+                  className={`mt-2 w-full rounded-lg border bg-cream px-4 py-3 text-sm min-h-[44px] focus:border-ink focus:outline-none ${fieldErrors.full_name ? "border-red-400" : "border-ink/20"}`}
                 />
+                {fieldErrors.full_name && <p data-testid="error-full_name" role="alert" className="mt-1 font-mono text-xs text-red-700">{fieldErrors.full_name}</p>}
               </div>
               <div>
                 <label className="font-mono text-[11px] uppercase tracking-widest text-ink/70" htmlFor="email">Email *</label>
                 <input
                   id="email"
                   type="email"
+                  inputMode="email"
+                  autoComplete="email"
                   data-testid="input-email"
+                  ref={(el) => (fieldRefs.current.email = el)}
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => { setEmail(e.target.value); clearFieldError("email"); }}
                   required
-                  className="mt-2 w-full rounded-lg border border-ink/20 bg-cream px-4 py-3 text-sm focus:border-ink focus:outline-none"
+                  className={`mt-2 w-full rounded-lg border bg-cream px-4 py-3 text-sm min-h-[44px] focus:border-ink focus:outline-none ${fieldErrors.email ? "border-red-400" : "border-ink/20"}`}
                 />
+                {fieldErrors.email && <p data-testid="error-email" role="alert" className="mt-1 font-mono text-xs text-red-700">{fieldErrors.email}</p>}
               </div>
               <div className="md:col-span-2">
-                <label className="font-mono text-[11px] uppercase tracking-widest text-ink/70" htmlFor="phone">Phone (optional)</label>
+                <label className="font-mono text-[11px] uppercase tracking-widest text-ink/70" htmlFor="phone">Phone *</label>
                 <input
                   id="phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   data-testid="input-phone"
+                  ref={(el) => (fieldRefs.current.phone = el)}
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="mt-2 w-full rounded-lg border border-ink/20 bg-cream px-4 py-3 text-sm focus:border-ink focus:outline-none"
+                  onChange={(e) => { setPhone(e.target.value); clearFieldError("phone"); }}
+                  placeholder="e.g. 07911 123456"
+                  className={`mt-2 w-full rounded-lg border bg-cream px-4 py-3 text-sm min-h-[44px] focus:border-ink focus:outline-none ${fieldErrors.phone ? "border-red-400" : "border-ink/20"}`}
                 />
+                {fieldErrors.phone && <p data-testid="error-phone" role="alert" className="mt-1 font-mono text-xs text-red-700">{fieldErrors.phone}</p>}
               </div>
-              <div className="md:col-span-2">
-                <label className="font-mono text-[11px] uppercase tracking-widest text-ink/70" htmlFor="notes">Anything we should know? (optional)</label>
-                <textarea
-                  id="notes"
-                  data-testid="input-notes"
-                  rows={4}
-                  value={eventNotes}
-                  onChange={(e) => setEventNotes(e.target.value)}
-                  className="mt-2 w-full rounded-lg border border-ink/20 bg-cream px-4 py-3 text-sm focus:border-ink focus:outline-none"
-                />
+            </div>
+
+            {/* --- Event details (Migration 021 / Step 2) --- */}
+            <fieldset className="space-y-4 rounded-lg border border-ink/15 bg-sand p-5">
+              <legend className="px-2 font-mono text-[10px] uppercase tracking-widest text-ink/60">Event details</legend>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <label className="flex items-center gap-3 text-sm text-ink/90" style={{ minHeight: 44 }}>
+                    <input
+                      type="checkbox"
+                      data-testid="venue-tbc"
+                      checked={venueTbc}
+                      onChange={(e) => {
+                        setVenueTbc(e.target.checked);
+                        if (e.target.checked) { clearFieldError("venue_name"); clearFieldError("event_postcode"); }
+                      }}
+                      className="h-5 w-5 shrink-0 rounded border-ink/30"
+                    />
+                    <span>Venue to be confirmed — I don&apos;t have the venue yet</span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="font-mono text-[11px] uppercase tracking-widest text-ink/70" htmlFor="venueName">
+                    Venue name {venueTbc ? "" : "*"}
+                  </label>
+                  <input
+                    id="venueName"
+                    data-testid="input-venue-name"
+                    ref={(el) => (fieldRefs.current.venue_name = el)}
+                    value={venueName}
+                    disabled={venueTbc}
+                    autoComplete="off"
+                    onChange={(e) => { setVenueName(e.target.value); clearFieldError("venue_name"); }}
+                    placeholder={venueTbc ? "Not needed yet" : "e.g. The Grand Hall"}
+                    className={`mt-2 w-full rounded-lg border bg-cream px-4 py-3 text-sm min-h-[44px] focus:border-ink focus:outline-none disabled:opacity-40 ${fieldErrors.venue_name ? "border-red-400" : "border-ink/20"}`}
+                  />
+                  {fieldErrors.venue_name && <p data-testid="error-venue_name" role="alert" className="mt-1 font-mono text-xs text-red-700">{fieldErrors.venue_name}</p>}
+                </div>
+
+                <div>
+                  <label className="font-mono text-[11px] uppercase tracking-widest text-ink/70" htmlFor="eventPostcode">
+                    Venue postcode {venueTbc ? "" : "*"}
+                  </label>
+                  <input
+                    id="eventPostcode"
+                    data-testid="input-postcode"
+                    ref={(el) => (fieldRefs.current.event_postcode = el)}
+                    value={eventPostcode}
+                    disabled={venueTbc}
+                    autoComplete="postal-code"
+                    onChange={(e) => { setEventPostcode(e.target.value); clearFieldError("event_postcode"); }}
+                    placeholder={venueTbc ? "Not needed yet" : "e.g. M1 1AA"}
+                    className={`mt-2 w-full rounded-lg border bg-cream px-4 py-3 text-sm min-h-[44px] focus:border-ink focus:outline-none disabled:opacity-40 ${fieldErrors.event_postcode ? "border-red-400" : "border-ink/20"}`}
+                  />
+                  {fieldErrors.event_postcode && <p data-testid="error-event_postcode" role="alert" className="mt-1 font-mono text-xs text-red-700">{fieldErrors.event_postcode}</p>}
+                </div>
+
+                <div>
+                  <label className="font-mono text-[11px] uppercase tracking-widest text-ink/70" htmlFor="eventCity">Town / city *</label>
+                  <input
+                    id="eventCity"
+                    data-testid="input-city"
+                    ref={(el) => (fieldRefs.current.event_city = el)}
+                    value={eventCity}
+                    autoComplete="address-level2"
+                    onChange={(e) => { setEventCity(e.target.value); clearFieldError("event_city"); }}
+                    placeholder="e.g. Manchester"
+                    className={`mt-2 w-full rounded-lg border bg-cream px-4 py-3 text-sm min-h-[44px] focus:border-ink focus:outline-none ${fieldErrors.event_city ? "border-red-400" : "border-ink/20"}`}
+                  />
+                  {fieldErrors.event_city && <p data-testid="error-event_city" role="alert" className="mt-1 font-mono text-xs text-red-700">{fieldErrors.event_city}</p>}
+                </div>
+
+                <div>
+                  <label className="font-mono text-[11px] uppercase tracking-widest text-ink/70" htmlFor="eventStartTime">Start time *</label>
+                  <input
+                    id="eventStartTime"
+                    type="time"
+                    data-testid="input-start-time"
+                    ref={(el) => (fieldRefs.current.event_start_time = el)}
+                    value={eventStartTime}
+                    onChange={(e) => { setEventStartTime(e.target.value); clearFieldError("event_start_time"); }}
+                    className={`mt-2 w-full rounded-lg border bg-cream px-4 py-3 text-sm min-h-[44px] focus:border-ink focus:outline-none ${fieldErrors.event_start_time ? "border-red-400" : "border-ink/20"}`}
+                  />
+                  {fieldErrors.event_start_time && <p data-testid="error-event_start_time" role="alert" className="mt-1 font-mono text-xs text-red-700">{fieldErrors.event_start_time}</p>}
+                </div>
+
+                <div>
+                  <label className="font-mono text-[11px] uppercase tracking-widest text-ink/70" htmlFor="guestCount">Approx. guest count (optional)</label>
+                  <input
+                    id="guestCount"
+                    type="number"
+                    inputMode="numeric"
+                    min="0"
+                    data-testid="input-guest-count"
+                    value={guestCount}
+                    onChange={(e) => setGuestCount(e.target.value)}
+                    placeholder="e.g. 80"
+                    className="mt-2 w-full rounded-lg border border-ink/20 bg-cream px-4 py-3 text-sm min-h-[44px] focus:border-ink focus:outline-none"
+                  />
+                </div>
               </div>
+            </fieldset>
+
+            {/* --- Secondary contact (optional) --- */}
+            <fieldset className="space-y-4 rounded-lg border border-ink/15 bg-sand p-5">
+              <legend className="px-2 font-mono text-[10px] uppercase tracking-widest text-ink/60">Secondary contact (optional)</legend>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="font-mono text-[11px] uppercase tracking-widest text-ink/70" htmlFor="secondaryName">Name</label>
+                  <input
+                    id="secondaryName"
+                    data-testid="input-secondary-name"
+                    value={secondaryName}
+                    autoComplete="off"
+                    onChange={(e) => setSecondaryName(e.target.value)}
+                    placeholder="e.g. a partner or planner"
+                    className="mt-2 w-full rounded-lg border border-ink/20 bg-cream px-4 py-3 text-sm min-h-[44px] focus:border-ink focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="font-mono text-[11px] uppercase tracking-widest text-ink/70" htmlFor="secondaryPhone">Phone</label>
+                  <input
+                    id="secondaryPhone"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="off"
+                    data-testid="input-secondary-phone"
+                    ref={(el) => (fieldRefs.current.secondary_contact_phone = el)}
+                    value={secondaryPhone}
+                    onChange={(e) => { setSecondaryPhone(e.target.value); clearFieldError("secondary_contact_phone"); }}
+                    placeholder="e.g. 07911 222333"
+                    className={`mt-2 w-full rounded-lg border bg-cream px-4 py-3 text-sm min-h-[44px] focus:border-ink focus:outline-none ${fieldErrors.secondary_contact_phone ? "border-red-400" : "border-ink/20"}`}
+                  />
+                  {fieldErrors.secondary_contact_phone && <p data-testid="error-secondary_contact_phone" role="alert" className="mt-1 font-mono text-xs text-red-700">{fieldErrors.secondary_contact_phone}</p>}
+                </div>
+              </div>
+            </fieldset>
+
+            <div>
+              <label className="font-mono text-[11px] uppercase tracking-widest text-ink/70" htmlFor="notes">Anything we should know? (optional)</label>
+              <textarea
+                id="notes"
+                data-testid="input-notes"
+                rows={4}
+                value={eventNotes}
+                onChange={(e) => setEventNotes(e.target.value)}
+                className="mt-2 w-full rounded-lg border border-ink/20 bg-cream px-4 py-3 text-sm focus:border-ink focus:outline-none"
+              />
             </div>
 
             <p className="text-xs leading-relaxed text-ink/60">
@@ -523,6 +746,7 @@ function BookPageInner() {
                 disabled={
                   submitting ||
                   !tcAccepted ||
+                  !detailsComplete ||
                   (minorsInvolved && (!guardianName.trim() || !safeguardingAccepted))
                 }
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-cream transition-opacity hover:opacity-90 disabled:opacity-40"

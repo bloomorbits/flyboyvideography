@@ -94,6 +94,12 @@ def _payload(event_date, email, package_id="wedding", tier="Classic"):
         "email": email,
         "full_name": "Attack Sim",
         "origin_url": "https://flyboyvideography.com",
+        "phone": "+447911123456",
+        "tc_accepted": True,
+        "venue_name": "The Grand Hall",
+        "event_city": "Manchester",
+        "event_postcode": "M1 1AA",
+        "event_start_time": "14:30",
     }
 
 

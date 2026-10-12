@@ -43,7 +43,7 @@ VALID_PAYLOAD_MINIMAL = {
     "event_date": "2028-06-20",
     "email": "consent.test@flyboytest.com",
     "full_name": "Consent Test",
-    "phone": "+447700900001",
+    "phone": "+447911123456",
     "event_notes": "consent enforcement test",
     "origin_url": "https://flyboyvideography.com",
     # ---- consent block ----
@@ -52,6 +52,11 @@ VALID_PAYLOAD_MINIMAL = {
     "minors_involved": False,
     "safeguarding_guardian_name": None,
     "safeguarding_consent_accepted": False,
+    # ---- compulsory booking details (Migration 021) ----
+    "venue_name": "The Grand Hall",
+    "event_city": "Manchester",
+    "event_postcode": "M1 1AA",
+    "event_start_time": "14:30",
 }
 
 

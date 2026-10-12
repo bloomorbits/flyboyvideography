@@ -1,6 +1,7 @@
 import logging
 import os
 import random
+import re
 import secrets
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -538,6 +539,105 @@ def admin_patch_booking(booking_id: str, body: PatchBody, admin=Depends(require_
     if not r.data:
         raise HTTPException(404, "Booking not found")
     return r.data[0]
+
+
+# ---- Booking detail (Migration 021) ----
+# E.164 matches the DB phone trigger; a stored phone that fails it is a legacy
+# value we display AS-IS with a "check number" marker (never reformatted).
+_E164_RE = re.compile(r"^\+[1-9][0-9]{6,14}$")
+
+
+def _hhmm(t):
+    """Normalise Supabase TIME output (HH:MM:SS) to HH:MM for display."""
+    if not t:
+        return None
+    parts = str(t).split(":")
+    return f"{parts[0]}:{parts[1]}" if len(parts) >= 2 else str(t)
+
+
+def _resolve_contact(intent, client):
+    """Contact source rule: intent first, then the clients record, else None
+    (the UI renders 'Not provided'). Raw intent rows are never returned."""
+    def pick(key):
+        if intent and intent.get(key):
+            return intent.get(key)
+        if client and client.get(key):
+            return client.get(key)
+        return None
+    phone = pick("phone")
+    return {
+        "full_name": pick("full_name"),
+        "email": pick("email"),
+        "phone": phone,
+        "phone_needs_check": bool(phone and not _E164_RE.match(str(phone).strip())),
+    }
+
+
+def _load_booking(booking_id):
+    r = sb.table("bookings").select("*").eq("id", booking_id).execute()
+    if not r.data:
+        raise HTTPException(404, "Booking not found")
+    b = r.data[0]
+    intent = None
+    if b.get("booking_intent_id"):
+        ir = sb.table("booking_intents").select("full_name,email,phone").eq("id", b["booking_intent_id"]).execute()
+        intent = ir.data[0] if ir.data else None
+    client = None
+    if b.get("client_id"):
+        cr = sb.table("clients").select("full_name,email,phone").eq("id", b["client_id"]).execute()
+        client = cr.data[0] if cr.data else None
+    return b, intent, client
+
+
+def _booking_detail(b, intent, client, *, admin: bool):
+    data = {
+        "id": b["id"],
+        "title": b.get("title"),
+        "shoot_type": b.get("shoot_type"),
+        "status": b.get("status"),
+        "event_date": b.get("event_date"),
+        "event_start_time": _hhmm(b.get("event_start_time")),
+        "venue_name": b.get("venue_name"),
+        "venue_tbc": b.get("venue_tbc", False),
+        "event_city": b.get("event_city"),
+        "event_postcode": b.get("event_postcode"),
+        "guest_count": b.get("guest_count"),
+        "secondary_contact_name": b.get("secondary_contact_name"),
+        "secondary_contact_phone": b.get("secondary_contact_phone"),
+        "notes": b.get("notes"),
+        "budget": b.get("budget"),
+        "deposit_paid_at": b.get("deposit_paid_at"),
+        "contact": _resolve_contact(intent, client),
+    }
+    if admin:
+        data.update({
+            "client_id": b.get("client_id"),
+            "booking_intent_id": b.get("booking_intent_id"),
+            "stripe_session_id": b.get("stripe_session_id"),
+            "tc_accepted_at": b.get("tc_accepted_at"),
+            "model_release_opted_in": b.get("model_release_opted_in"),
+            "minors_involved": b.get("minors_involved"),
+            "safeguarding_guardian_name": b.get("safeguarding_guardian_name"),
+            "safeguarding_consent_accepted_at": b.get("safeguarding_consent_accepted_at"),
+        })
+    return data
+
+
+@app.get("/api/admin/bookings/{booking_id}")
+def admin_get_booking(booking_id: str, admin=Depends(require_admin)):
+    b, intent, client = _load_booking(booking_id)
+    return _booking_detail(b, intent, client, admin=True)
+
+
+@app.get("/api/bookings/{booking_id}")
+def client_get_booking(booking_id: str, user=Depends(get_auth_user)):
+    client = get_client_row(user)
+    if not client:
+        raise HTTPException(404, "Client profile not found")
+    b, intent, owner = _load_booking(booking_id)
+    if b.get("client_id") != client["id"] and client.get("role") != "admin":
+        raise HTTPException(403, "Not your booking")
+    return _booking_detail(b, intent, owner, admin=False)
 
 
 @app.post("/api/admin/clients/{client_id}/erase")

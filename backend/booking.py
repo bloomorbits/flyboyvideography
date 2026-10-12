@@ -36,6 +36,9 @@ import hashlib
 import html
 import logging
 import os
+import re
+
+import phonenumbers
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -139,6 +142,18 @@ class CheckoutIn(BaseModel):
     # minors_involved is set.
     safeguarding_guardian_name: Optional[str] = Field(default=None, max_length=200)
     safeguarding_consent_accepted: bool = False
+    # ---- Compulsory booking details (Migration 021) ----
+    # Nullable at the Pydantic level; the checkout handler enforces the
+    # required ones with per-field 422 messages so the frontend can render
+    # them inline. Phone is normalised to E.164 before persistence.
+    venue_name: Optional[str] = Field(default=None, max_length=300)
+    venue_tbc: bool = False
+    event_city: Optional[str] = Field(default=None, max_length=200)
+    event_postcode: Optional[str] = Field(default=None, max_length=40)
+    event_start_time: Optional[str] = Field(default=None, max_length=8)  # "HH:MM" / "HH:MM:SS"
+    guest_count: Optional[int] = Field(default=None, ge=0, le=100000)
+    secondary_contact_name: Optional[str] = Field(default=None, max_length=200)
+    secondary_contact_phone: Optional[str] = Field(default=None, max_length=40)
 
 
 class CheckoutOut(BaseModel):
@@ -153,6 +168,44 @@ class StatusOut(BaseModel):
 
 
 # ---------- Helpers ----------
+
+
+# Booking-detail validation (Migration 021). E.164 matches the DB trigger.
+_E164_RE = re.compile(r"^\+[1-9][0-9]{6,14}$")
+PHONE_FIX_MSG = "This number needs fixing — check it and try again."
+
+
+def _blank(v) -> bool:
+    """Whitespace-only counts as missing."""
+    return v is None or (isinstance(v, str) and not v.strip())
+
+
+def _normalise_phone(raw: str) -> str:
+    """Return E.164 for a UK-default number. Raises ValueError if invalid.
+    Accepts UK local (07…), +44…, and genuine international numbers."""
+    parsed = phonenumbers.parse(raw.strip(), "GB")
+    if not phonenumbers.is_valid_number(parsed):
+        raise ValueError("invalid phone")
+    return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+
+
+def _normalise_time(raw: str) -> str:
+    """Accept HH:MM or HH:MM:SS, return canonical HH:MM. Raises ValueError."""
+    s = raw.strip()
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%H:%M")
+        except ValueError:
+            continue
+    raise ValueError("invalid time")
+
+
+def _booking_details_enforced() -> bool:
+    """Deploy-window gate for the Migration 021 booking-detail fields. When OFF
+    (default) the new fields are OPTIONAL so the OLD checkout form keeps working
+    during the deploy window; any value that IS supplied is still normalised and
+    validated. The owner flips ENFORCE_BOOKING_DETAILS on once the new form is live."""
+    return os.environ.get("ENFORCE_BOOKING_DETAILS", "false").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _sb():
@@ -838,6 +891,60 @@ def create_checkout(body: CheckoutIn, request: Request):
                 400,
                 "Guardian safeguarding consent must be accepted when anyone under 18 will appear in the session.",
             )
+
+    # ---- Compulsory booking details (Migration 021) ----
+    # Server-side gate with per-field messages. Required: phone,
+    # event_start_time, city, and (venue_name OR venue_tbc). Postcode is
+    # required only when the venue is known (not TBC). Light validation only.
+    # Requirement is gated by ENFORCE_BOOKING_DETAILS (deploy-window flag): when
+    # off, fields are optional but any supplied value is still normalised.
+    enforce = _booking_details_enforced()
+    field_errors: list[dict[str, str]] = []
+
+    phone_e164: Optional[str] = None
+    if _blank(body.phone):
+        if enforce:
+            field_errors.append({"field": "phone", "message": "A contact phone number is required."})
+    else:
+        try:
+            phone_e164 = _normalise_phone(body.phone)
+        except Exception:
+            field_errors.append({"field": "phone", "message": PHONE_FIX_MSG})
+
+    start_time_norm: Optional[str] = None
+    if _blank(body.event_start_time):
+        if enforce:
+            field_errors.append({"field": "event_start_time", "message": "An event start time is required."})
+    else:
+        try:
+            start_time_norm = _normalise_time(body.event_start_time)
+        except Exception:
+            field_errors.append({"field": "event_start_time", "message": "Enter a valid start time, e.g. 14:30."})
+
+    if enforce and _blank(body.event_city):
+        field_errors.append({"field": "event_city", "message": "The event town or city is required."})
+
+    if enforce and not body.venue_tbc and _blank(body.venue_name):
+        field_errors.append({"field": "venue_name", "message": "Enter the venue name, or tick 'venue to be confirmed'."})
+
+    if enforce and not body.venue_tbc and _blank(body.event_postcode):
+        field_errors.append({"field": "event_postcode", "message": "A venue postcode is required when the venue is known."})
+
+    secondary_phone_e164: Optional[str] = None
+    if not _blank(body.secondary_contact_phone):
+        try:
+            secondary_phone_e164 = _normalise_phone(body.secondary_contact_phone)
+        except Exception:
+            field_errors.append({"field": "secondary_contact_phone", "message": PHONE_FIX_MSG})
+
+    if field_errors:
+        raise HTTPException(422, detail={"errors": field_errors})
+
+    venue_name_clean = (body.venue_name or "").strip() or None
+    event_city_clean = (body.event_city or "").strip() or None
+    event_postcode_clean = (body.event_postcode or "").strip() or None
+    secondary_name_clean = (body.secondary_contact_name or "").strip() or None
+
     # Timestamps + IP captured at the moment the checkbox was submitted.
     # Persisted TWICE by design (Migration 010 + 010B):
     #   1. Primary: booking_intents (this row) — written NOW, no external
@@ -889,7 +996,7 @@ def create_checkout(body: CheckoutIn, request: Request):
     intent_row = sb.table("booking_intents").insert({
         "email": str(body.email),
         "full_name": body.full_name,
-        "phone": body.phone,
+        "phone": phone_e164,
         "package_id": pkg["id"],
         "package_title": pkg["title"],
         "tier_name": body.tier_name or None,
@@ -898,8 +1005,27 @@ def create_checkout(body: CheckoutIn, request: Request):
         "event_date": event_iso,
         "event_notes": body.event_notes,
         "status": "pending",
+        "venue_name": venue_name_clean,
+        "venue_tbc": body.venue_tbc,
+        "event_city": event_city_clean,
+        "event_postcode": event_postcode_clean,
+        "event_start_time": start_time_norm,
+        "guest_count": body.guest_count,
+        "secondary_contact_name": secondary_name_clean,
+        "secondary_contact_phone": secondary_phone_e164,
         **consent_cols_for_intent,
-    }).execute().data[0]
+    })
+    try:
+        intent_row = intent_row.execute().data[0]
+    except Exception as e:
+        # Defense-in-depth: numbers are already normalised above, so a phone
+        # E.164 trigger/CHECK rejection here is unexpected — surface it as a
+        # clear per-field message, never a generic 500. No phone is logged.
+        msg = str(e).lower()
+        if "e.164" in msg or "check" in msg or "violat" in msg:
+            field = "secondary_contact_phone" if "secondary" in msg else "phone"
+            raise HTTPException(422, detail={"errors": [{"field": field, "message": PHONE_FIX_MSG}]})
+        raise
 
     # 2. Stripe Checkout Session (DIY tax mode; user is not VAT-registered)
     origin = body.origin_url.rstrip("/")
@@ -1252,6 +1378,16 @@ def _finalise_paid_session(
             "budget": float(intent["price_total"]),
             "notes": intent.get("event_notes"),
             "is_seed_data": False,
+            # Compulsory booking details (Migration 021) — copied from the
+            # intent, never from Stripe metadata (no free text in metadata).
+            "venue_name": intent.get("venue_name"),
+            "venue_tbc": intent.get("venue_tbc", False),
+            "event_city": intent.get("event_city"),
+            "event_postcode": intent.get("event_postcode"),
+            "event_start_time": intent.get("event_start_time"),
+            "guest_count": intent.get("guest_count"),
+            "secondary_contact_name": intent.get("secondary_contact_name"),
+            "secondary_contact_phone": intent.get("secondary_contact_phone"),
             **consent_cols,
         }).execute().data[0]
     except Exception as e:

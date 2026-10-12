@@ -1578,3 +1578,88 @@ Drag-to-reorder for featured projects (replaces the manual number input):
 GENUINELY UNDEPLOYED = only the Bunny reconcile feature (backend + .github workflow +
 dashboard tiles) and the not-yet-built Phase-2 upload code. Reconcile is backend/Railway +
 a GitHub Action; a Vercel website deploy does NOT carry it — no confirmation it's on Railway.
+
+## STEP 2 — COMPULSORY BOOKING DETAILS, BACKEND + TESTS (Jun 2026) [BACKEND COMPLETE — PAUSED FOR REVIEW, NOT DEPLOYED]
+Migration 021 verified in production by owner. Backend (no frontend yet) implemented + tested.
+
+Scope delivered (REAL, all tested):
+  1. Checkout server-side validation (booking.py create_checkout, ~L887-928):
+     per-field 422 {"detail":{"errors":[{"field","message"}]}}. Required = phone,
+     event_start_time, event_city, (venue_name OR venue_tbc). Postcode required only
+     when venue known (not venue_tbc). Whitespace-only counts as missing. Optional =
+     guest_count, secondary contact. Light validation (no UK postcode regex).
+  2. Phone normalised to E.164 via phonenumbers (GB default), is_valid_number.
+     Primary + secondary. Junk/invalid -> per-field "This number needs fixing...".
+     DB-trigger rejection on intent insert mapped to same per-field message (L1005-1015).
+     NOTE: is_valid_number rejects Ofcom fictitious 07700 900xxx — test fixtures moved
+     to +447911123456 / +441234567890 (REAL decision, documented).
+  3. Persist new fields to booking_intents at checkout; copied to bookings on
+     finalise FROM THE INTENT (booking.py _finalise_paid_session ~L1368-1377). NO free
+     text in Stripe metadata (asserted). event_date uniqueness unchanged.
+  4. Endpoints (server.py): GET /api/admin/bookings/{id} (require_admin) and
+     GET /api/bookings/{id} (client, entitlement-guarded, 403 cross-client, 404 missing).
+     Raw intent row never returned. Contact source rule: intent first -> clients fallback
+     (_resolve_contact L558). Legacy non-E.164 phone shown AS-IS with phone_needs_check=true
+     ("check number" marker). event_start_time displayed HH:MM (_hhmm L550).
+  5. No phone numbers in logs/audit (verified — insert-error log truncates, no phone).
+
+Tests: tests/test_booking_details.py — 35 passed. Covers every required field
+  missing/blank/whitespace, venue_tbc relaxation, postcode-when-known, phone
+  UK/+44/intl normalise + junk reject, secondary phone, start-time HH:MM/HH:MM:SS/junk,
+  details-on-intent + NOT-in-metadata, finalise copy when Stripe metadata call fails,
+  contact rule + legacy marker + HH:MM display, admin/client/404/403 entitlement.
+Mutation-tested each enforcement branch (revert -> guarding test fails -> restore):
+  postcode-when-known, phone required+normalise (5 tests catch), start-time parse,
+  finalise venue_name copy, client entitlement guard — ALL caught; files restored identical.
+Existing suites GREEN after changes: consent (mocked), pricing (21, live), SEC-001
+  concurrency + balance (11, live), health/cron/revision. Updated shared checkout
+  payloads in test_consent_enforcement.py, test_booking_flow.py, sim_calendar_freeze_attack.py
+  to include the new required fields.
+Dependency added: phonenumbers (pip freeze -> requirements.txt).
+
+PAUSED per owner before frontend booking fields + admin detail view. NOTHING DEPLOYED.
+NEXT (frontend, awaiting go-ahead): checkout form fields (venue/tbc/city/postcode/
+  start-time/guest_count/secondary), per-field 422 error surfacing; admin booking detail
+  page consuming GET /api/admin/bookings/{id} with "check number" badge; client booking view.
+
+---
+
+## Step 2 (cont.) — Compulsory booking details: FRONTEND + DEPLOY GATE (2026-06, session 10)
+
+### Deploy-order hazard fixed
+- New checkout enforcement is gated behind env flag `ENFORCE_BOOKING_DETAILS` (backend/.env,
+  default **false**). OFF = new fields optional so the OLD /book form keeps checking out;
+  any supplied value is still normalised/validated (clean data). ON = full per-field 422
+  enforcement. Owner flips ON + restarts backend AFTER the new form ships.
+- Value-validation (phone E.164, time parse, secondary phone) runs whenever a value IS
+  supplied, regardless of the flag. Only the "required/missing" checks are gated.
+- Tests added (booking.py path): test_flag_off_old_form_without_new_fields_checks_out,
+  test_flag_off_still_validates_supplied_phone, test_flag_on_old_form_is_rejected.
+- booking.py helper: `_booking_details_enforced()`. In tests, `_post(..., enforce=True)` patches it.
+
+### Frontend — marketing site /book form (/app/website/app/book/page.js)
+- Step-2 fields added: venue_name, venue_tbc checkbox, event_city, event_postcode (required
+  only when !venue_tbc), event_start_time (<input type=time>), guest_count (optional number),
+  secondary_contact_name/phone (optional). Phone is now REQUIRED.
+- Inline per-field errors (data-testid error-<field>), parses new 422 shape
+  {detail:{errors:[{field,message}]}}. Client-side validateDetails() mirrors server messages.
+- Pay button disabled until detailsComplete (mirrors server required rules). On 422, focuses
+  first invalid field + scrolls to it; state preserved (no reset). TBC checkbox disables +
+  clears venue/postcode. Correct input types + autocomplete; all inputs min-h-[44px].
+
+### Frontend — portal detail pages (/app/frontend)
+- Client read-only: /bookings/:id → BookingDetail.js (GET /api/bookings/:id, ownership-guarded).
+  Bookings list cards now link to it.
+- Admin: /admin/bookings/:id → AdminBookingDetail.js (GET /api/admin/bookings/:id). Shows event,
+  contact (intent-first), consent/safeguarding, references. admin_calendar.py shoot link now
+  deep-links to /admin/bookings/{id} (was /bookings).
+- Legacy non-E.164 phones preserved AS-IS with an amber "check number" marker (phone_needs_check).
+
+### Verification (REAL)
+- 44 unit tests pass (booking_details + consent). Live booking_flow: 9 passed (flag-off checkout e2e).
+- Admin detail page verified e2e in preview: real booking 3605aca3… renders legacy phone +
+  "check number", minors/guardian, stripe refs. Client cross-owner GET → 403 (e2e curl).
+- CRA compiled successfully; website page.js parses OK. Phone validator accepts UK mobile/landline,
+  +44 spaced, +234, bracket/dash formats — no real number blocked.
+
+### Status: PAUSED for user review before deployment. NOT deployed.

@@ -127,6 +127,11 @@ def _payload(event_date=None, **over):
         # the checkout handler 400s without this. Model-release defaults to
         # opted-in; no minors by default.
         "tc_accepted": True,
+        # Compulsory booking details (Migration 021).
+        "venue_name": "The Grand Hall",
+        "event_city": "Manchester",
+        "event_postcode": "M1 1AA",
+        "event_start_time": "14:30",
     }
     body.update(over)
     return body

@@ -4,7 +4,7 @@ Supabase project: https://pnqqmzszasvfnvnnonvd.supabase.co (auth + Postgres; NO 
 
 ## Admin account (recreated 2026-06 after purge/manual auth cleanup; auto-promoted via ADMIN_EMAILS)
 - Email: flyboy.admin.demo@gmail.com
-- Password: AdminStudio#2026
+- Password: [REDACTED — held by owner; reset via GoTrue admin API with the service-role key if needed]
 - clients row is_seed_data=false (protected from purge)
 
 ## Client account (recreated + freshly seeded after genuine E2E purge, session 6)
@@ -110,3 +110,15 @@ Bunny test asset (real, in prod Bunny): Stream video GUID
 zone `video-deliverables-s3` (region `uk`). Test scripts:
 `backend/tests/test_bunny.py` (local Supabase-logic) + inline Railway
 black-box runs. Endpoints proven green end-to-end.
+
+## Session 10 update (2026-06) — Step 2 compulsory booking details (frontend)
+- `demo.client.frameform@gmail.com` NO LONGER EXISTS in this DB. Do not use it.
+- Admin test account confirmed working: flyboy.admin.demo@gmail.com (password REDACTED — held by owner;
+  reset via GoTrue admin API with the service-role key if needed). role=admin in clients.
+- Seed client login works: bunny.owner@seed.flyboytest.com (seed convention password, see above).
+  (has no bookings — use it only for auth/403 ownership checks).
+- 5 real paid bookings exist (pre-Migration-021, so venue/city/time are null and
+  render as "—"). Example id for admin detail page: 3605aca3-4ac2-48f1-a261-49c737b08f2d
+  (legacy phone 07123456789 → shows "check number" marker; minors=Yes, guardian=Funke).
+- Backend flag: ENFORCE_BOOKING_DETAILS in backend/.env, default **false** (deploy-window
+  gate). Flip to true + restart backend AFTER the new /book form is live in production.
