@@ -36,5 +36,7 @@ where  table_schema='public' and table_name='booking_intents' and column_name='e
 union all
 select 'date_slot_locks.rows', count(*)::text from public.date_slot_locks;
 
--- 5) cron tables unchanged (present + job count). Skip if pg_cron not installed.
-select 'cron.job.rows' as item, count(*)::text as value from cron.job;
+-- 5) scheduled-jobs ledger unchanged. pg_cron is NOT installed on this project;
+--    scheduled jobs run from GitHub Actions and write to public.cron_runs.
+--    Migration 021 must not touch it — this returns its current row count.
+select 'public.cron_runs.rows' as item, count(*)::text as value from public.cron_runs;
