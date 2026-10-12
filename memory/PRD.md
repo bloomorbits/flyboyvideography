@@ -1578,3 +1578,46 @@ Drag-to-reorder for featured projects (replaces the manual number input):
 GENUINELY UNDEPLOYED = only the Bunny reconcile feature (backend + .github workflow +
 dashboard tiles) and the not-yet-built Phase-2 upload code. Reconcile is backend/Railway +
 a GitHub Action; a Vercel website deploy does NOT carry it — no confirmation it's on Railway.
+
+## STEP 2 — COMPULSORY BOOKING DETAILS, BACKEND + TESTS (Jun 2026) [BACKEND COMPLETE — PAUSED FOR REVIEW, NOT DEPLOYED]
+Migration 021 verified in production by owner. Backend (no frontend yet) implemented + tested.
+
+Scope delivered (REAL, all tested):
+  1. Checkout server-side validation (booking.py create_checkout, ~L887-928):
+     per-field 422 {"detail":{"errors":[{"field","message"}]}}. Required = phone,
+     event_start_time, event_city, (venue_name OR venue_tbc). Postcode required only
+     when venue known (not venue_tbc). Whitespace-only counts as missing. Optional =
+     guest_count, secondary contact. Light validation (no UK postcode regex).
+  2. Phone normalised to E.164 via phonenumbers (GB default), is_valid_number.
+     Primary + secondary. Junk/invalid -> per-field "This number needs fixing...".
+     DB-trigger rejection on intent insert mapped to same per-field message (L1005-1015).
+     NOTE: is_valid_number rejects Ofcom fictitious 07700 900xxx — test fixtures moved
+     to +447911123456 / +441234567890 (REAL decision, documented).
+  3. Persist new fields to booking_intents at checkout; copied to bookings on
+     finalise FROM THE INTENT (booking.py _finalise_paid_session ~L1368-1377). NO free
+     text in Stripe metadata (asserted). event_date uniqueness unchanged.
+  4. Endpoints (server.py): GET /api/admin/bookings/{id} (require_admin) and
+     GET /api/bookings/{id} (client, entitlement-guarded, 403 cross-client, 404 missing).
+     Raw intent row never returned. Contact source rule: intent first -> clients fallback
+     (_resolve_contact L558). Legacy non-E.164 phone shown AS-IS with phone_needs_check=true
+     ("check number" marker). event_start_time displayed HH:MM (_hhmm L550).
+  5. No phone numbers in logs/audit (verified — insert-error log truncates, no phone).
+
+Tests: tests/test_booking_details.py — 35 passed. Covers every required field
+  missing/blank/whitespace, venue_tbc relaxation, postcode-when-known, phone
+  UK/+44/intl normalise + junk reject, secondary phone, start-time HH:MM/HH:MM:SS/junk,
+  details-on-intent + NOT-in-metadata, finalise copy when Stripe metadata call fails,
+  contact rule + legacy marker + HH:MM display, admin/client/404/403 entitlement.
+Mutation-tested each enforcement branch (revert -> guarding test fails -> restore):
+  postcode-when-known, phone required+normalise (5 tests catch), start-time parse,
+  finalise venue_name copy, client entitlement guard — ALL caught; files restored identical.
+Existing suites GREEN after changes: consent (mocked), pricing (21, live), SEC-001
+  concurrency + balance (11, live), health/cron/revision. Updated shared checkout
+  payloads in test_consent_enforcement.py, test_booking_flow.py, sim_calendar_freeze_attack.py
+  to include the new required fields.
+Dependency added: phonenumbers (pip freeze -> requirements.txt).
+
+PAUSED per owner before frontend booking fields + admin detail view. NOTHING DEPLOYED.
+NEXT (frontend, awaiting go-ahead): checkout form fields (venue/tbc/city/postcode/
+  start-time/guest_count/secondary), per-field 422 error surfacing; admin booking detail
+  page consuming GET /api/admin/bookings/{id} with "check number" badge; client booking view.
