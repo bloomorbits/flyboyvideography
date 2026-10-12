@@ -136,7 +136,7 @@ def _load_shoots(sb, from_iso: str, to_iso: str) -> list[dict]:
             "date": r["event_date"],
             "title": r.get("title") or "Shoot",
             "id": f"shoot:{r['id']}",
-            "link": f"/bookings",  # no per-booking detail page yet in the portal
+            "link": f"/admin/bookings/{r['id']}",
             "status": r["status"],
         }
         cname = names.get(r["client_id"])

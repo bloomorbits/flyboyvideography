@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -82,7 +83,8 @@ export default function Bookings() {
       ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {rows.map((b, i) => (
-            <Card key={b.id} className="card-hover rise p-6" style={{ animationDelay: `${i * 50}ms` }} data-testid={`booking-card-${i}`}>
+            <Link to={`/bookings/${b.id}`} key={b.id} data-testid={`booking-card-${i}`}>
+            <Card className="card-hover rise p-6" style={{ animationDelay: `${i * 50}ms` }}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="font-display text-xl font-bold tracking-tight">{b.title}</p>
@@ -106,6 +108,7 @@ export default function Bookings() {
               </div>
               {b.notes && <p className="mt-4 text-sm text-ink/60">{b.notes}</p>}
             </Card>
+            </Link>
           ))}
         </div>
       )}

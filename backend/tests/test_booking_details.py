@@ -104,9 +104,10 @@ def _stripe_session():
     return s
 
 
-def _post(payload, sb_mock=None):
+def _post(payload, sb_mock=None, enforce=True):
     sb_mock = sb_mock or _mock_sb()
     with patch("booking._sb", return_value=sb_mock), \
+         patch("booking._booking_details_enforced", return_value=enforce), \
          patch("booking._clean_expired_locks"), \
          patch("booking._confirmed_booking_exists", return_value=False), \
          patch("booking._active_lock_exists", return_value=False), \
@@ -122,6 +123,64 @@ def _field_errors(r):
     if isinstance(detail, dict):
         return {e["field"]: e["message"] for e in detail.get("errors", [])}
     return {}
+
+
+# --------------------------------------------------------------------------- #
+# 0. Deploy-window flag OFF — OLD form (no new fields) must still check out    #
+# --------------------------------------------------------------------------- #
+def test_flag_off_old_form_without_new_fields_checks_out():
+    """ENFORCE_BOOKING_DETAILS off: a legacy payload missing ALL new required
+    fields must reach Stripe (no 422), so the old frontend keeps working during
+    the deploy window."""
+    legacy = {
+        "package_id": "graduation", "tier_name": "", "event_date": "2030-06-20",
+        "email": "legacy@flyboytest.com", "full_name": "Legacy Form",
+        "origin_url": "https://flyboyvideography.com", "tc_accepted": True,
+        "model_release_opted_in": True, "minors_involved": False,
+    }
+    r, sb_mock, sc = _post(legacy, enforce=False)
+    assert r.status_code == 200, r.text
+    assert sc.call_count == 1
+    # new columns persisted as NULL/default, not fabricated
+    intent = sb_mock._captured_intent_insert
+    assert intent["venue_name"] is None and intent["event_city"] is None
+    assert intent["event_start_time"] is None
+
+
+def test_flag_off_still_validates_supplied_phone():
+    """Even with the flag off, a phone that IS supplied is normalised; junk is
+    rejected (never written raw to a field the DB trigger would bounce)."""
+    r, sb_mock, _ = _post({
+        "package_id": "graduation", "tier_name": "", "event_date": "2030-06-20",
+        "email": "legacy2@flyboytest.com", "full_name": "Legacy Two",
+        "origin_url": "https://flyboyvideography.com", "tc_accepted": True,
+        "phone": "07911 123456",
+    }, enforce=False)
+    assert r.status_code == 200, r.text
+    assert sb_mock._captured_intent_insert["phone"] == "+447911123456"
+
+    r2, _, sc2 = _post({
+        "package_id": "graduation", "tier_name": "", "event_date": "2030-06-21",
+        "email": "legacy3@flyboytest.com", "full_name": "Legacy Three",
+        "origin_url": "https://flyboyvideography.com", "tc_accepted": True,
+        "phone": "notaphone",
+    }, enforce=False)
+    assert r2.status_code == 422 and "phone" in _field_errors(r2)
+    assert sc2.call_count == 0
+
+
+def test_flag_on_old_form_is_rejected():
+    """Sanity: with the flag ON, the legacy payload (no new fields) 422s — this
+    is why the flag defaults OFF until the new form ships."""
+    legacy = {
+        "package_id": "graduation", "tier_name": "", "event_date": "2030-06-22",
+        "email": "legacy4@flyboytest.com", "full_name": "Legacy Four",
+        "origin_url": "https://flyboyvideography.com", "tc_accepted": True,
+    }
+    r, _, sc = _post(legacy, enforce=True)
+    assert r.status_code == 422
+    assert {"phone", "event_start_time", "event_city", "venue_name"} <= set(_field_errors(r))
+    assert sc.call_count == 0
 
 
 # --------------------------------------------------------------------------- #

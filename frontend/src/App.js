@@ -5,6 +5,7 @@ import Layout from "./components/Layout";
 import AuthPage from "./pages/AuthPage";
 import Dashboard from "./pages/Dashboard";
 import Bookings from "./pages/Bookings";
+import BookingDetail from "./pages/BookingDetail";
 import Retainers from "./pages/Retainers";
 import Deliverables from "./pages/Deliverables";
 import DeliverableDetail from "./pages/DeliverableDetail";
@@ -16,6 +17,7 @@ import AdminPricing from "./pages/AdminPricing";
 import AdminPortfolio from "./pages/AdminPortfolio";
 import AdminCalendar from "./pages/AdminCalendar";
 import AdminDashboard from "./pages/AdminDashboard";
+import AdminBookingDetail from "./pages/AdminBookingDetail";
 
 function Protected({ children }) {
   const { session, loading } = useAuth();
@@ -38,12 +40,14 @@ export default function App() {
           <Route element={<Protected><Layout /></Protected>}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/bookings" element={<Bookings />} />
+            <Route path="/bookings/:id" element={<BookingDetail />} />
             <Route path="/retainers" element={<Retainers />} />
             <Route path="/deliverables" element={<Deliverables />} />
             <Route path="/deliverables/:id" element={<DeliverableDetail />} />
             <Route path="/invoices" element={<Invoices />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/bookings/:id" element={<AdminBookingDetail />} />
             <Route path="/admin/operate" element={<Admin />} />
             <Route path="/admin/security" element={<AdminSecurity />} />
             <Route path="/admin/pricing" element={<AdminPricing />} />

@@ -200,6 +200,14 @@ def _normalise_time(raw: str) -> str:
     raise ValueError("invalid time")
 
 
+def _booking_details_enforced() -> bool:
+    """Deploy-window gate for the Migration 021 booking-detail fields. When OFF
+    (default) the new fields are OPTIONAL so the OLD checkout form keeps working
+    during the deploy window; any value that IS supplied is still normalised and
+    validated. The owner flips ENFORCE_BOOKING_DETAILS on once the new form is live."""
+    return os.environ.get("ENFORCE_BOOKING_DETAILS", "false").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _sb():
     """Get the Supabase service-role client. Imported lazily so server.py
     boot-hardening (503 vs crash-loop) still applies."""
@@ -888,11 +896,15 @@ def create_checkout(body: CheckoutIn, request: Request):
     # Server-side gate with per-field messages. Required: phone,
     # event_start_time, city, and (venue_name OR venue_tbc). Postcode is
     # required only when the venue is known (not TBC). Light validation only.
+    # Requirement is gated by ENFORCE_BOOKING_DETAILS (deploy-window flag): when
+    # off, fields are optional but any supplied value is still normalised.
+    enforce = _booking_details_enforced()
     field_errors: list[dict[str, str]] = []
 
     phone_e164: Optional[str] = None
     if _blank(body.phone):
-        field_errors.append({"field": "phone", "message": "A contact phone number is required."})
+        if enforce:
+            field_errors.append({"field": "phone", "message": "A contact phone number is required."})
     else:
         try:
             phone_e164 = _normalise_phone(body.phone)
@@ -901,20 +913,21 @@ def create_checkout(body: CheckoutIn, request: Request):
 
     start_time_norm: Optional[str] = None
     if _blank(body.event_start_time):
-        field_errors.append({"field": "event_start_time", "message": "An event start time is required."})
+        if enforce:
+            field_errors.append({"field": "event_start_time", "message": "An event start time is required."})
     else:
         try:
             start_time_norm = _normalise_time(body.event_start_time)
         except Exception:
             field_errors.append({"field": "event_start_time", "message": "Enter a valid start time, e.g. 14:30."})
 
-    if _blank(body.event_city):
+    if enforce and _blank(body.event_city):
         field_errors.append({"field": "event_city", "message": "The event town or city is required."})
 
-    if not body.venue_tbc and _blank(body.venue_name):
+    if enforce and not body.venue_tbc and _blank(body.venue_name):
         field_errors.append({"field": "venue_name", "message": "Enter the venue name, or tick 'venue to be confirmed'."})
 
-    if not body.venue_tbc and _blank(body.event_postcode):
+    if enforce and not body.venue_tbc and _blank(body.event_postcode):
         field_errors.append({"field": "event_postcode", "message": "A venue postcode is required when the venue is known."})
 
     secondary_phone_e164: Optional[str] = None
@@ -928,7 +941,7 @@ def create_checkout(body: CheckoutIn, request: Request):
         raise HTTPException(422, detail={"errors": field_errors})
 
     venue_name_clean = (body.venue_name or "").strip() or None
-    event_city_clean = body.event_city.strip()
+    event_city_clean = (body.event_city or "").strip() or None
     event_postcode_clean = (body.event_postcode or "").strip() or None
     secondary_name_clean = (body.secondary_contact_name or "").strip() or None
 

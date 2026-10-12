@@ -1621,3 +1621,45 @@ PAUSED per owner before frontend booking fields + admin detail view. NOTHING DEP
 NEXT (frontend, awaiting go-ahead): checkout form fields (venue/tbc/city/postcode/
   start-time/guest_count/secondary), per-field 422 error surfacing; admin booking detail
   page consuming GET /api/admin/bookings/{id} with "check number" badge; client booking view.
+
+---
+
+## Step 2 (cont.) — Compulsory booking details: FRONTEND + DEPLOY GATE (2026-06, session 10)
+
+### Deploy-order hazard fixed
+- New checkout enforcement is gated behind env flag `ENFORCE_BOOKING_DETAILS` (backend/.env,
+  default **false**). OFF = new fields optional so the OLD /book form keeps checking out;
+  any supplied value is still normalised/validated (clean data). ON = full per-field 422
+  enforcement. Owner flips ON + restarts backend AFTER the new form ships.
+- Value-validation (phone E.164, time parse, secondary phone) runs whenever a value IS
+  supplied, regardless of the flag. Only the "required/missing" checks are gated.
+- Tests added (booking.py path): test_flag_off_old_form_without_new_fields_checks_out,
+  test_flag_off_still_validates_supplied_phone, test_flag_on_old_form_is_rejected.
+- booking.py helper: `_booking_details_enforced()`. In tests, `_post(..., enforce=True)` patches it.
+
+### Frontend — marketing site /book form (/app/website/app/book/page.js)
+- Step-2 fields added: venue_name, venue_tbc checkbox, event_city, event_postcode (required
+  only when !venue_tbc), event_start_time (<input type=time>), guest_count (optional number),
+  secondary_contact_name/phone (optional). Phone is now REQUIRED.
+- Inline per-field errors (data-testid error-<field>), parses new 422 shape
+  {detail:{errors:[{field,message}]}}. Client-side validateDetails() mirrors server messages.
+- Pay button disabled until detailsComplete (mirrors server required rules). On 422, focuses
+  first invalid field + scrolls to it; state preserved (no reset). TBC checkbox disables +
+  clears venue/postcode. Correct input types + autocomplete; all inputs min-h-[44px].
+
+### Frontend — portal detail pages (/app/frontend)
+- Client read-only: /bookings/:id → BookingDetail.js (GET /api/bookings/:id, ownership-guarded).
+  Bookings list cards now link to it.
+- Admin: /admin/bookings/:id → AdminBookingDetail.js (GET /api/admin/bookings/:id). Shows event,
+  contact (intent-first), consent/safeguarding, references. admin_calendar.py shoot link now
+  deep-links to /admin/bookings/{id} (was /bookings).
+- Legacy non-E.164 phones preserved AS-IS with an amber "check number" marker (phone_needs_check).
+
+### Verification (REAL)
+- 44 unit tests pass (booking_details + consent). Live booking_flow: 9 passed (flag-off checkout e2e).
+- Admin detail page verified e2e in preview: real booking 3605aca3… renders legacy phone +
+  "check number", minors/guardian, stripe refs. Client cross-owner GET → 403 (e2e curl).
+- CRA compiled successfully; website page.js parses OK. Phone validator accepts UK mobile/landline,
+  +44 spaced, +234, bracket/dash formats — no real number blocked.
+
+### Status: PAUSED for user review before deployment. NOT deployed.
