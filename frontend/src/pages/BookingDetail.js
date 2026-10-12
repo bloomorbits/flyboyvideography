@@ -8,7 +8,7 @@ function Field({ label, children, testId }) {
   return (
     <div>
       <p className="font-mono text-[10px] uppercase tracking-widest text-ink/70">{label}</p>
-      <p className="mt-1 text-sm text-ink" data-testid={testId}>{children ?? "—"}</p>
+      <p className="mt-1 break-words text-sm text-ink" data-testid={testId}>{children ?? "—"}</p>
     </div>
   );
 }
